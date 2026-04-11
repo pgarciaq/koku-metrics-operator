@@ -474,6 +474,7 @@ type rosContainerRow struct {
 	MemoryRSSUsageContainerMin         string `mapstructure:"memory-rss-usage-container-min"`
 	MemoryRSSUsageContainerMax         string `mapstructure:"memory-rss-usage-container-max"`
 	MemoryRSSUsageContainerSum         string `mapstructure:"memory-rss-usage-container-sum"`
+	OOMCount                           string `mapstructure:"oom-count"`
 	AcceleratorModelName               string `mapstructure:"accelerator_model_name"`
 	AcceleratorProfileName             string `mapstructure:"accelerator_profile_name"`
 	AcceleratorCoreUsagePercentageMin  string `mapstructure:"accelerator-core-usage-percentage-min"`
@@ -527,6 +528,7 @@ func (rosContainerRow) csvHeader() []string {
 		"memory_rss_usage_container_min",
 		"memory_rss_usage_container_max",
 		"memory_rss_usage_container_sum",
+		"oom_count",
 		"accelerator_model_name",
 		"accelerator_profile_name",
 		"accelerator_core_usage_percentage_min",
@@ -581,6 +583,7 @@ func (row rosContainerRow) csvRow() []string {
 		row.MemoryRSSUsageContainerMin,
 		row.MemoryRSSUsageContainerMax,
 		row.MemoryRSSUsageContainerSum,
+		row.OOMCount,
 		row.AcceleratorModelName,
 		row.AcceleratorProfileName,
 		row.AcceleratorCoreUsagePercentageMin,
