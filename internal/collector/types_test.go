@@ -20,8 +20,8 @@ func TestRosContainerRow_OOMCountInHeader(t *testing.T) {
 	if oomIdx > 0 && header[oomIdx-1] != "memory_rss_usage_container_sum" {
 		t.Errorf("oom_count should follow memory_rss_usage_container_sum, got %q", header[oomIdx-1])
 	}
-	if oomIdx < len(header)-1 && header[oomIdx+1] != "accelerator_model_name" {
-		t.Errorf("oom_count should precede accelerator_model_name, got %q", header[oomIdx+1])
+	if oomIdx < len(header)-1 && header[oomIdx+1] != "workload_pod_count" {
+		t.Errorf("oom_count should precede workload_pod_count, got %q", header[oomIdx+1])
 	}
 }
 

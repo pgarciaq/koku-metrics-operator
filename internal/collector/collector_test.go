@@ -1083,3 +1083,186 @@ func TestIterateMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestIterateVector_WorkloadPodCountMerge(t *testing.T) {
+	// Simulate the ROS container query flow:
+	// 1. An earlier query (cpu-request-container-avg) populates a row keyed by (container, pod, namespace)
+	// 2. The workload-pod-count query adds its value to the same row
+	// 3. Both share RowKey: []model.LabelName{"container", "pod", "namespace"}
+
+	results := mappedResults{}
+
+	cpuReqQuery := query{
+		Name:        "cpu-request-container-avg",
+		QueryString: "avg_over_time(...)",
+		MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+		QueryValue: &saveQueryValue{
+			ValName: "cpu-request-container-avg",
+		},
+		RowKey: []model.LabelName{"container", "pod", "namespace"},
+	}
+
+	cpuVector := model.Vector{
+		{
+			Metric: model.Metric{
+				"container": "main",
+				"pod":       "deploy-abc-123",
+				"namespace": "production",
+				"node":      "node-1",
+			},
+			Value:     model.SampleValue(0.5),
+			Timestamp: 1677009600,
+		},
+		{
+			Metric: model.Metric{
+				"container": "sidecar",
+				"pod":       "deploy-abc-123",
+				"namespace": "production",
+				"node":      "node-1",
+			},
+			Value:     model.SampleValue(0.1),
+			Timestamp: 1677009600,
+		},
+	}
+
+	results.iterateVector(cpuVector, cpuReqQuery)
+
+	// Key for (container=main, pod=deploy-abc-123, namespace=production) is the sorted join
+	mainKey := generateKey(model.Metric{
+		"container": "main",
+		"pod":       "deploy-abc-123",
+		"namespace": "production",
+	}, cpuReqQuery.RowKey)
+
+	sidecarKey := generateKey(model.Metric{
+		"container": "sidecar",
+		"pod":       "deploy-abc-123",
+		"namespace": "production",
+	}, cpuReqQuery.RowKey)
+
+	if results[mainKey] == nil {
+		t.Fatalf("expected row for key %q after cpu query", mainKey)
+	}
+	if results[mainKey]["cpu-request-container-avg"] != "0.500000" {
+		t.Errorf("cpu-request-container-avg = %q, want 0.500000", results[mainKey]["cpu-request-container-avg"])
+	}
+
+	// Now apply the workload-pod-count query (same RowKey)
+	podCountQuery := query{
+		Name:        "workload-pod-count",
+		QueryString: QueryMap["ros:workload_pod_count"],
+		MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+		QueryValue: &saveQueryValue{
+			ValName: "workload-pod-count",
+		},
+		RowKey: []model.LabelName{"container", "pod", "namespace"},
+	}
+
+	podCountVector := model.Vector{
+		{
+			Metric: model.Metric{
+				"container": "main",
+				"pod":       "deploy-abc-123",
+				"namespace": "production",
+			},
+			Value:     model.SampleValue(3),
+			Timestamp: 1677009600,
+		},
+		{
+			Metric: model.Metric{
+				"container": "sidecar",
+				"pod":       "deploy-abc-123",
+				"namespace": "production",
+			},
+			Value:     model.SampleValue(3),
+			Timestamp: 1677009600,
+		},
+	}
+
+	results.iterateVector(podCountVector, podCountQuery)
+
+	// Verify the pod count was merged into the SAME row as the cpu request
+	if results[mainKey]["workload-pod-count"] != "3.000000" {
+		t.Errorf("workload-pod-count for main = %q, want 3.000000", results[mainKey]["workload-pod-count"])
+	}
+	if results[mainKey]["cpu-request-container-avg"] != "0.500000" {
+		t.Errorf("cpu-request-container-avg was overwritten: %q", results[mainKey]["cpu-request-container-avg"])
+	}
+	if results[sidecarKey]["workload-pod-count"] != "3.000000" {
+		t.Errorf("workload-pod-count for sidecar = %q, want 3.000000", results[sidecarKey]["workload-pod-count"])
+	}
+
+	// Verify the merged map can be decoded into rosContainerRow
+	mainRow := newROSContainerRow(&fakeTimeRange)
+	if err := getStruct(results[mainKey], &mainRow, make(mappedCSVStruct), mainKey); err != nil {
+		t.Fatalf("getStruct failed: %v", err)
+	}
+	if mainRow.WorkloadPodCount != "3.000000" {
+		t.Errorf("rosContainerRow.WorkloadPodCount = %q, want 3.000000", mainRow.WorkloadPodCount)
+	}
+	if mainRow.CPURequestContainerAvg != "0.500000" {
+		t.Errorf("rosContainerRow.CPURequestContainerAvg = %q, want 0.500000", mainRow.CPURequestContainerAvg)
+	}
+
+	// Verify csvRow() includes the pod count in the correct position
+	csv := mainRow.csvRow()
+	header := mainRow.csvHeader()
+	wpcIdx := -1
+	for i, h := range header {
+		if h == "workload_pod_count" {
+			wpcIdx = i
+			break
+		}
+	}
+	if wpcIdx < 0 {
+		t.Fatal("workload_pod_count not found in csvHeader")
+	}
+	if csv[wpcIdx] != "3.000000" {
+		t.Errorf("csvRow()[%d] = %q, want 3.000000", wpcIdx, csv[wpcIdx])
+	}
+}
+
+func TestIterateVector_WorkloadPodCountMissing(t *testing.T) {
+	// When the workload-pod-count query returns no data for a pod,
+	// the WorkloadPodCount field should remain empty in the CSV.
+	results := mappedResults{}
+
+	cpuReqQuery := query{
+		Name:        "cpu-request-container-avg",
+		QueryString: "avg_over_time(...)",
+		MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+		QueryValue: &saveQueryValue{
+			ValName: "cpu-request-container-avg",
+		},
+		RowKey: []model.LabelName{"container", "pod", "namespace"},
+	}
+
+	cpuVector := model.Vector{
+		{
+			Metric: model.Metric{
+				"container": "app",
+				"pod":       "orphan-pod",
+				"namespace": "default",
+			},
+			Value:     model.SampleValue(0.25),
+			Timestamp: 1677009600,
+		},
+	}
+
+	results.iterateVector(cpuVector, cpuReqQuery)
+
+	// No workload-pod-count query result for this pod
+	key := generateKey(model.Metric{
+		"container": "app",
+		"pod":       "orphan-pod",
+		"namespace": "default",
+	}, cpuReqQuery.RowKey)
+
+	row := newROSContainerRow(&fakeTimeRange)
+	if err := getStruct(results[key], &row, make(mappedCSVStruct), key); err != nil {
+		t.Fatalf("getStruct failed: %v", err)
+	}
+	if row.WorkloadPodCount != "" {
+		t.Errorf("WorkloadPodCount should be empty for pods without workload-pod-count data, got %q", row.WorkloadPodCount)
+	}
+}
