@@ -442,51 +442,54 @@ func (row nvidiaGpuRow) string() string { return strings.Join(row.csvRow(), ",")
 type rosContainerRow struct {
 	*dateTimes
 	nodeRow
-	ContainerName                      string `mapstructure:"container_name"`
-	Pod                                string `mapstructure:"pod"`
-	OwnerName                          string `mapstructure:"owner_name"`
-	OwnerKind                          string `mapstructure:"owner_kind"`
-	Workload                           string `mapstructure:"workload"`
-	WorkloadType                       string `mapstructure:"workload_type"`
-	Namespace                          string `mapstructure:"namespace"`
-	ImageName                          string `mapstructure:"image_name"`
-	CPURequestContainerAvg             string `mapstructure:"cpu-request-container-avg"`
-	CPURequestContainerSum             string `mapstructure:"cpu-request-container-sum"`
-	CPULimitContainerAvg               string `mapstructure:"cpu-limit-container-avg"`
-	CPULimitContainerSum               string `mapstructure:"cpu-limit-container-sum"`
-	CPUUsageContainerAvg               string `mapstructure:"cpu-usage-container-avg"`
-	CPUUsageContainerMin               string `mapstructure:"cpu-usage-container-min"`
-	CPUUsageContainerMax               string `mapstructure:"cpu-usage-container-max"`
-	CPUUsageContainerSum               string `mapstructure:"cpu-usage-container-sum"`
-	CPUThrottleContainerAvg            string `mapstructure:"cpu-throttle-container-avg"`
-	CPUThrottleContainerMax            string `mapstructure:"cpu-throttle-container-max"`
-	CPUThrottleContainerMin            string `mapstructure:"cpu-throttle-container-min"`
-	CPUThrottleContainerSum            string `mapstructure:"cpu-throttle-container-sum"`
-	MemoryRequestContainerAvg          string `mapstructure:"memory-request-container-avg"`
-	MemoryRequestContainerSum          string `mapstructure:"memory-request-container-sum"`
-	MemoryLimitContainerAvg            string `mapstructure:"memory-limit-container-avg"`
-	MemoryLimitContainerSum            string `mapstructure:"memory-limit-container-sum"`
-	MemoryUsageContainerAvg            string `mapstructure:"memory-usage-container-avg"`
-	MemoryUsageContainerMin            string `mapstructure:"memory-usage-container-min"`
-	MemoryUsageContainerMax            string `mapstructure:"memory-usage-container-max"`
-	MemoryUsageContainerSum            string `mapstructure:"memory-usage-container-sum"`
-	MemoryRSSUsageContainerAvg         string `mapstructure:"memory-rss-usage-container-avg"`
-	MemoryRSSUsageContainerMin         string `mapstructure:"memory-rss-usage-container-min"`
-	MemoryRSSUsageContainerMax         string `mapstructure:"memory-rss-usage-container-max"`
-	MemoryRSSUsageContainerSum         string `mapstructure:"memory-rss-usage-container-sum"`
-	OOMCount                           string `mapstructure:"oom-count"`
-	WorkloadPodCount                   string `mapstructure:"workload-pod-count"`
-	AcceleratorModelName               string `mapstructure:"accelerator_model_name"`
-	AcceleratorProfileName             string `mapstructure:"accelerator_profile_name"`
-	AcceleratorCoreUsagePercentageMin  string `mapstructure:"accelerator-core-usage-percentage-min"`
-	AcceleratorCoreUsagePercentageMax  string `mapstructure:"accelerator-core-usage-percentage-max"`
-	AcceleratorCoreUsagePercentageAvg  string `mapstructure:"accelerator-core-usage-percentage-avg"`
-	AcceleratorMemoryCopyPercentageMin string `mapstructure:"accelerator-memory-copy-percentage-min"`
-	AcceleratorMemoryCopyPercentageMax string `mapstructure:"accelerator-memory-copy-percentage-max"`
-	AcceleratorMemoryCopyPercentageAvg string `mapstructure:"accelerator-memory-copy-percentage-avg"`
-	AcceleratorFrameBufferUsageMin     string `mapstructure:"accelerator-frame-buffer-usage-min"`
-	AcceleratorFrameBufferUsageMax     string `mapstructure:"accelerator-frame-buffer-usage-max"`
-	AcceleratorFrameBufferUsageAvg     string `mapstructure:"accelerator-frame-buffer-usage-avg"`
+	ContainerName                  string `mapstructure:"container_name"`
+	Pod                            string `mapstructure:"pod"`
+	OwnerName                      string `mapstructure:"owner_name"`
+	OwnerKind                      string `mapstructure:"owner_kind"`
+	Workload                       string `mapstructure:"workload"`
+	WorkloadType                   string `mapstructure:"workload_type"`
+	Namespace                      string `mapstructure:"namespace"`
+	ImageName                      string `mapstructure:"image_name"`
+	CPURequestContainerAvg         string `mapstructure:"cpu-request-container-avg"`
+	CPURequestContainerSum         string `mapstructure:"cpu-request-container-sum"`
+	CPULimitContainerAvg           string `mapstructure:"cpu-limit-container-avg"`
+	CPULimitContainerSum           string `mapstructure:"cpu-limit-container-sum"`
+	CPUUsageContainerAvg           string `mapstructure:"cpu-usage-container-avg"`
+	CPUUsageContainerMin           string `mapstructure:"cpu-usage-container-min"`
+	CPUUsageContainerMax           string `mapstructure:"cpu-usage-container-max"`
+	CPUUsageContainerSum           string `mapstructure:"cpu-usage-container-sum"`
+	CPUThrottleContainerAvg        string `mapstructure:"cpu-throttle-container-avg"`
+	CPUThrottleContainerMax        string `mapstructure:"cpu-throttle-container-max"`
+	CPUThrottleContainerMin        string `mapstructure:"cpu-throttle-container-min"`
+	CPUThrottleContainerSum        string `mapstructure:"cpu-throttle-container-sum"`
+	MemoryRequestContainerAvg      string `mapstructure:"memory-request-container-avg"`
+	MemoryRequestContainerSum      string `mapstructure:"memory-request-container-sum"`
+	MemoryLimitContainerAvg        string `mapstructure:"memory-limit-container-avg"`
+	MemoryLimitContainerSum        string `mapstructure:"memory-limit-container-sum"`
+	MemoryUsageContainerAvg        string `mapstructure:"memory-usage-container-avg"`
+	MemoryUsageContainerMin        string `mapstructure:"memory-usage-container-min"`
+	MemoryUsageContainerMax        string `mapstructure:"memory-usage-container-max"`
+	MemoryUsageContainerSum        string `mapstructure:"memory-usage-container-sum"`
+	MemoryRSSUsageContainerAvg     string `mapstructure:"memory-rss-usage-container-avg"`
+	MemoryRSSUsageContainerMin     string `mapstructure:"memory-rss-usage-container-min"`
+	MemoryRSSUsageContainerMax     string `mapstructure:"memory-rss-usage-container-max"`
+	MemoryRSSUsageContainerSum     string `mapstructure:"memory-rss-usage-container-sum"`
+	OOMCount                       string `mapstructure:"oom-count"`
+	WorkloadPodCount               string `mapstructure:"workload-pod-count"`
+	AcceleratorModelName           string `mapstructure:"accelerator_model_name"`
+	AcceleratorProfileName         string `mapstructure:"accelerator_profile_name"`
+	AcceleratorFrameBufferUsageMin string `mapstructure:"accelerator-frame-buffer-usage-min"`
+	AcceleratorFrameBufferUsageMax string `mapstructure:"accelerator-frame-buffer-usage-max"`
+	AcceleratorFrameBufferUsageAvg string `mapstructure:"accelerator-frame-buffer-usage-avg"`
+	TensorPipeActiveMin            string `mapstructure:"tensor-pipe-active-min"`
+	TensorPipeActiveMax            string `mapstructure:"tensor-pipe-active-max"`
+	TensorPipeActiveAvg            string `mapstructure:"tensor-pipe-active-avg"`
+	DRAMActiveMin                  string `mapstructure:"dram-active-min"`
+	DRAMActiveMax                  string `mapstructure:"dram-active-max"`
+	DRAMActiveAvg                  string `mapstructure:"dram-active-avg"`
+	SMActiveMin                    string `mapstructure:"sm-active-min"`
+	SMActiveMax                    string `mapstructure:"sm-active-max"`
+	SMActiveAvg                    string `mapstructure:"sm-active-avg"`
 }
 
 func (rosContainerRow) csvHeader() []string {
@@ -533,15 +536,18 @@ func (rosContainerRow) csvHeader() []string {
 		"workload_pod_count",
 		"accelerator_model_name",
 		"accelerator_profile_name",
-		"accelerator_core_usage_percentage_min",
-		"accelerator_core_usage_percentage_max",
-		"accelerator_core_usage_percentage_avg",
-		"accelerator_memory_copy_percentage_min",
-		"accelerator_memory_copy_percentage_max",
-		"accelerator_memory_copy_percentage_avg",
 		"accelerator_frame_buffer_usage_min",
 		"accelerator_frame_buffer_usage_max",
 		"accelerator_frame_buffer_usage_avg",
+		"tensor_pipe_active_min",
+		"tensor_pipe_active_max",
+		"tensor_pipe_active_avg",
+		"dram_active_min",
+		"dram_active_max",
+		"dram_active_avg",
+		"sm_active_min",
+		"sm_active_max",
+		"sm_active_avg",
 	}
 }
 
@@ -589,15 +595,18 @@ func (row rosContainerRow) csvRow() []string {
 		row.WorkloadPodCount,
 		row.AcceleratorModelName,
 		row.AcceleratorProfileName,
-		row.AcceleratorCoreUsagePercentageMin,
-		row.AcceleratorCoreUsagePercentageMax,
-		row.AcceleratorCoreUsagePercentageAvg,
-		row.AcceleratorMemoryCopyPercentageMin,
-		row.AcceleratorMemoryCopyPercentageMax,
-		row.AcceleratorMemoryCopyPercentageAvg,
 		row.AcceleratorFrameBufferUsageMin,
 		row.AcceleratorFrameBufferUsageMax,
 		row.AcceleratorFrameBufferUsageAvg,
+		row.TensorPipeActiveMin,
+		row.TensorPipeActiveMax,
+		row.TensorPipeActiveAvg,
+		row.DRAMActiveMin,
+		row.DRAMActiveMax,
+		row.DRAMActiveAvg,
+		row.SMActiveMin,
+		row.SMActiveMax,
+		row.SMActiveAvg,
 	}
 }
 

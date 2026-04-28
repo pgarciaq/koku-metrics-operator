@@ -177,12 +177,15 @@ Fields for metrics related to containers:
 * `memory_rss_usage_container_sum`: The total RSS memory usage for the container.
 * `accelerator_model_name`: The GPU Model which the workload is utilising.
 * `accelerator_profile_name`: The GPU partition which the workload is utilising.
-* `accelerator_core_usage_percentage_min`: The minimum GPU core utilization percentage for a container.
-* `accelerator_core_usage_percentage_max`: The maximum GPU core utilization percentage for a container.
-* `accelerator_core_usage_percentage_avg`: The average GPU core utilization percentage for a container.
-* `accelerator_memory_copy_percentage_min`: The minimum GPU memory bandwidth utilization percentage for a container.
-* `accelerator_memory_copy_percentage_max`: The maximum GPU memory bandwidth utilization percentage for a container.
-* `accelerator_memory_copy_percentage_avg`: The average GPU memory bandwidth utilization percentage for a container.
+* `tensor_pipe_active_min`: The minimum tensor core pipe activity ratio (0.0-1.0) for a container. Requires Turing+ datacenter GPU with DCGM profiling metrics.
+* `tensor_pipe_active_max`: The maximum tensor core pipe activity ratio (0.0-1.0) for a container.
+* `tensor_pipe_active_avg`: The average tensor core pipe activity ratio (0.0-1.0) for a container.
+* `dram_active_min`: The minimum DRAM bandwidth activity ratio (0.0-1.0) for a container.
+* `dram_active_max`: The maximum DRAM bandwidth activity ratio (0.0-1.0) for a container.
+* `dram_active_avg`: The average DRAM bandwidth activity ratio (0.0-1.0) for a container.
+* `sm_active_min`: The minimum streaming multiprocessor activity ratio (0.0-1.0) for a container.
+* `sm_active_max`: The maximum streaming multiprocessor activity ratio (0.0-1.0) for a container.
+* `sm_active_avg`: The average streaming multiprocessor activity ratio (0.0-1.0) for a container.
 * `accelerator_frame_buffer_usage_min`: The minimum GPU frame buffer usage in bytes for a container.
 * `accelerator_frame_buffer_usage_max`: The maximum GPU frame buffer usage in bytes for a container.
 * `accelerator_frame_buffer_usage_avg`: The average GPU frame buffer usage in bytes for a container.
