@@ -5,7 +5,8 @@
 			"exported_container": "gpu-workload",
 			"exported_namespace": "gpu-test",
 			"exported_pod": "gpu-pod-123",
-			"Hostname": "gpu-node-1"
+			"Hostname": "gpu-node-1",
+			"GPU_I_PROFILE": "0"
 		},
 		"value": [
 			1677009600,
@@ -18,7 +19,8 @@
 			"exported_container": "ml-training",
 			"exported_namespace": "ai-project",
 			"exported_pod": "training-pod-456",
-			"Hostname": "gpu-node-2"
+			"Hostname": "gpu-node-2",
+			"GPU_I_PROFILE": "1"
 		},
 		"value": [
 			1677009600,
