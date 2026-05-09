@@ -200,8 +200,17 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 	// Collect VolumeSnapshot inventory (uses Kubernetes API, not Prometheus).
 	// Non-fatal: failure here should not block cost report processing.
 	yearMonth := r.promCollector.TimeSeries.Start.Format("200601")
-	if err := collector.GenerateSnapshotInventory(r.restConfig, dirCfg, yearMonth); err != nil {
-		log.Error(err, "failed to generate snapshot inventory report (non-fatal)")
+	snapResult := collector.GenerateSnapshotInventory(r.restConfig, dirCfg, yearMonth)
+	cr.Status.Snapshot.CRDAvailable = snapResult.CRDAvailable
+	cr.Status.Snapshot.SnapshotCount = snapResult.SnapshotCount
+	if snapResult.Error != nil {
+		cr.Status.Snapshot.CollectionError = snapResult.Error.Error()
+		log.Error(snapResult.Error, "failed to generate snapshot inventory report (non-fatal)")
+	} else {
+		cr.Status.Snapshot.CollectionError = ""
+		if snapResult.CRDAvailable {
+			cr.Status.Snapshot.LastSuccessfulCollectionTime = metav1.Now()
+		}
 	}
 
 	// since we've had a successful query, we should wipe the tracker to remove it from mem

@@ -18,6 +18,24 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
+func TestGenerateSnapshotReportCRDNotAvailable(t *testing.T) {
+	// When the snapshot CRD is not available, GenerateSnapshotReport returns
+	// CRDAvailable: false and no error.
+	cfg := &SnapshotCollectorConfig{
+		RestConfig: nil, // nil config causes discovery to fail → CRD not available
+	}
+	result := GenerateSnapshotReport(cfg, nil, "202605")
+	if result.CRDAvailable {
+		t.Error("expected CRDAvailable=false when config is nil")
+	}
+	if result.Error != nil {
+		t.Errorf("expected no error, got: %v", result.Error)
+	}
+	if result.SnapshotCount != 0 {
+		t.Errorf("expected SnapshotCount=0, got %d", result.SnapshotCount)
+	}
+}
+
 func TestSnapshotRowCSVHeader(t *testing.T) {
 	row := snapshotRow{}
 	headers := row.csvHeader()

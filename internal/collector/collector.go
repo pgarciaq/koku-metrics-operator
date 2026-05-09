@@ -271,7 +271,7 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 // GenerateSnapshotInventory wraps the snapshot collector for use by the controller.
 // It is called separately from GenerateReports since it queries the Kubernetes API
 // rather than Prometheus.
-func GenerateSnapshotInventory(restConfig *rest.Config, dirCfg *dirconfig.DirectoryConfig, yearMonth string) error {
+func GenerateSnapshotInventory(restConfig *rest.Config, dirCfg *dirconfig.DirectoryConfig, yearMonth string) SnapshotCollectionResult {
 	cfg := &SnapshotCollectorConfig{RestConfig: restConfig}
 	return GenerateSnapshotReport(cfg, dirCfg, yearMonth)
 }
