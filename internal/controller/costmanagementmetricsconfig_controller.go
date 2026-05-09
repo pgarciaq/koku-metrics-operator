@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -81,6 +82,7 @@ type MetricsConfigReconciler struct {
 	apiReader             client.Reader
 	cvClientBuilder       cv.ClusterVersionBuilder
 	promCollector         *collector.PrometheusCollector
+	restConfig            *rest.Config
 	initialDataCollection bool
 	overrideSecretPath    bool
 }
@@ -920,6 +922,7 @@ func (r *MetricsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 // SetupWithManager Setup reconciliation with manager object
 func (r *MetricsConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.apiReader = mgr.GetAPIReader()
+	r.restConfig = mgr.GetConfig()
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&metricscfgv1beta1.MetricsConfig{}).
 		WithOptions(controller.Options{
