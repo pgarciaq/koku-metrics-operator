@@ -461,6 +461,23 @@ type ReportsStatus struct {
 	DataCollectionMessage string `json:"data_collection_message,omitempty"`
 }
 
+// SnapshotCollectionStatus defines the status for VolumeSnapshot inventory collection.
+type SnapshotCollectionStatus struct {
+
+	// CRDAvailable indicates whether the snapshot.storage.k8s.io CRD is installed on the cluster.
+	CRDAvailable bool `json:"crd_available"`
+
+	// LastSuccessfulCollectionTime is the time of the last successful snapshot inventory collection.
+	// +nullable
+	LastSuccessfulCollectionTime metav1.Time `json:"last_successful_collection_time,omitempty"`
+
+	// SnapshotCount is the number of VolumeSnapshot objects found in the last collection.
+	SnapshotCount int64 `json:"snapshot_count,omitempty"`
+
+	// CollectionError is the error message from the last collection attempt (empty if successful).
+	CollectionError string `json:"error,omitempty"`
+}
+
 // StorageStatus defines the status for storage.
 type StorageStatus struct {
 
@@ -510,6 +527,10 @@ type CostManagementMetricsConfigStatus struct {
 
 	// Storage is a field
 	Storage StorageStatus `json:"storage,omitempty"`
+
+	// Snapshot represents the status of VolumeSnapshot inventory collection.
+	// +optional
+	Snapshot SnapshotCollectionStatus `json:"snapshot,omitempty"`
 
 	// PersistentVolumeClaim is a field of CostManagementMetricsConfig to represent a PVC.
 	PersistentVolumeClaim *EmbeddedPersistentVolumeClaim `json:"persistent_volume_claim,omitempty"`

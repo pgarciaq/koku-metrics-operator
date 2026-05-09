@@ -935,6 +935,32 @@ spec:
                       to represent the month for which reports are being generated.
                     type: string
                 type: object
+              snapshot:
+                description: Snapshot represents the status of VolumeSnapshot inventory
+                  collection.
+                properties:
+                  crd_available:
+                    description: CRDAvailable indicates whether the snapshot.storage.k8s.io
+                      CRD is installed on the cluster.
+                    type: boolean
+                  error:
+                    description: CollectionError is the error message from the last
+                      collection attempt (empty if successful).
+                    type: string
+                  last_successful_collection_time:
+                    description: LastSuccessfulCollectionTime is the time of the last
+                      successful snapshot inventory collection.
+                    format: date-time
+                    nullable: true
+                    type: string
+                  snapshot_count:
+                    description: SnapshotCount is the number of VolumeSnapshot objects
+                      found in the last collection.
+                    format: int64
+                    type: integer
+                required:
+                - crd_available
+                type: object
               source:
                 description: source represents the observed state of the integration
                   on console.redhat.com.

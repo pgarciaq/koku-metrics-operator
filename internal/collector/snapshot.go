@@ -41,25 +41,33 @@ type SnapshotCollectorConfig struct {
 	RestConfig *rest.Config
 }
 
+// SnapshotCollectionResult holds the outcome of a snapshot collection run,
+// used by the reconciler to populate the CR status.
+type SnapshotCollectionResult struct {
+	CRDAvailable  bool
+	SnapshotCount int64
+	Error         error
+}
+
 // GenerateSnapshotReport collects VolumeSnapshot objects from the Kubernetes
 // API and writes a snapshot inventory CSV. It gracefully skips collection
 // if the snapshot.storage.k8s.io CRD is not installed on the cluster.
-func GenerateSnapshotReport(cfg *SnapshotCollectorConfig, dirCfg *dirconfig.DirectoryConfig, yearMonth string) error {
+func GenerateSnapshotReport(cfg *SnapshotCollectorConfig, dirCfg *dirconfig.DirectoryConfig, yearMonth string) SnapshotCollectionResult {
 	snapshotLog := log.WithName("GenerateSnapshotReport")
 
 	if !IsSnapshotCRDAvailable(cfg.RestConfig) {
 		snapshotLog.Info("snapshot.storage.k8s.io CRD not available, skipping snapshot inventory collection")
-		return nil
+		return SnapshotCollectionResult{CRDAvailable: false}
 	}
 
 	dynClient, err := dynamic.NewForConfig(cfg.RestConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create dynamic client: %w", err)
+		return SnapshotCollectionResult{CRDAvailable: true, Error: fmt.Errorf("failed to create dynamic client: %w", err)}
 	}
 
 	k8sClient, err := kubernetes.NewForConfig(cfg.RestConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create kubernetes client: %w", err)
+		return SnapshotCollectionResult{CRDAvailable: true, Error: fmt.Errorf("failed to create kubernetes client: %w", err)}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -67,12 +75,12 @@ func GenerateSnapshotReport(cfg *SnapshotCollectorConfig, dirCfg *dirconfig.Dire
 
 	snapshots, err := listAllSnapshots(ctx, dynClient)
 	if err != nil {
-		return fmt.Errorf("failed to list VolumeSnapshots: %w", err)
+		return SnapshotCollectionResult{CRDAvailable: true, Error: fmt.Errorf("failed to list VolumeSnapshots: %w", err)}
 	}
 
 	if len(snapshots) == 0 {
 		snapshotLog.Info("no VolumeSnapshots found, skipping report generation")
-		return nil
+		return SnapshotCollectionResult{CRDAvailable: true, SnapshotCount: 0}
 	}
 
 	now := time.Now().UTC()
@@ -102,15 +110,18 @@ func GenerateSnapshotReport(cfg *SnapshotCollectorConfig, dirCfg *dirconfig.Dire
 
 	snapshotLog.Info("writing snapshot inventory to file", "filename", snapshotReport.file.getName(), "count", len(rows))
 	if err := snapshotReport.writeReport(); err != nil {
-		return fmt.Errorf("failed to write snapshot report: %w", err)
+		return SnapshotCollectionResult{CRDAvailable: true, SnapshotCount: int64(len(rows)), Error: fmt.Errorf("failed to write snapshot report: %w", err)}
 	}
 
-	return nil
+	return SnapshotCollectionResult{CRDAvailable: true, SnapshotCount: int64(len(rows))}
 }
 
 // IsSnapshotCRDAvailable checks if the snapshot.storage.k8s.io API group is
 // registered on the cluster via API discovery.
 func IsSnapshotCRDAvailable(config *rest.Config) bool {
+	if config == nil {
+		return false
+	}
 	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
 	if err != nil {
 		return false
