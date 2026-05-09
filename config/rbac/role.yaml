@@ -28,6 +28,20 @@ rules:
   - list
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - snapshot.storage.k8s.io
+  resources:
+  - volumesnapshots
+  verbs:
+  - get
+  - list
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - prometheuses/api

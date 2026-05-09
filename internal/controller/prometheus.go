@@ -197,6 +197,13 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 	log.Info("reports generated for range", "start", formattedStart, "end", formattedEnd)
 	cr.Status.Prometheus.LastQuerySuccessTime = t
 
+	// Collect VolumeSnapshot inventory (uses Kubernetes API, not Prometheus).
+	// Non-fatal: failure here should not block cost report processing.
+	yearMonth := r.promCollector.TimeSeries.Start.Format("200601")
+	if err := collector.GenerateSnapshotInventory(r.restConfig, dirCfg, yearMonth); err != nil {
+		log.Error(err, "failed to generate snapshot inventory report (non-fatal)")
+	}
+
 	// since we've had a successful query, we should wipe the tracker to remove it from mem
 	retryTracker = make(map[time.Time]int)
 	return nil

@@ -18,6 +18,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"k8s.io/client-go/rest"
 	logr "sigs.k8s.io/controller-runtime/pkg/log"
 
 	metricscfgv1beta1 "github.com/project-koku/koku-metrics-operator/api/v1beta1"
@@ -265,6 +266,14 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 	//################################################################################################################
 
 	return nil
+}
+
+// GenerateSnapshotInventory wraps the snapshot collector for use by the controller.
+// It is called separately from GenerateReports since it queries the Kubernetes API
+// rather than Prometheus.
+func GenerateSnapshotInventory(restConfig *rest.Config, dirCfg *dirconfig.DirectoryConfig, yearMonth string) error {
+	cfg := &SnapshotCollectorConfig{RestConfig: restConfig}
+	return GenerateSnapshotReport(cfg, dirCfg, yearMonth)
 }
 
 func generateCostManagementReports(log gologr.Logger, c *PrometheusCollector, dirCfg *dirconfig.DirectoryConfig, nodeRows mappedCSVStruct, yearMonth string) error {
