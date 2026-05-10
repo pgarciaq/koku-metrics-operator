@@ -344,6 +344,11 @@ func (in *PrometheusSpec) DeepCopyInto(out *PrometheusSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.DisableSnapshotCollection != nil {
+		in, out := &in.DisableSnapshotCollection, &out.DisableSnapshotCollection
+		*out = new(bool)
+		**out = **in
+	}
 	if in.SkipTLSVerification != nil {
 		in, out := &in.SkipTLSVerification, &out.SkipTLSVerification
 		*out = new(bool)

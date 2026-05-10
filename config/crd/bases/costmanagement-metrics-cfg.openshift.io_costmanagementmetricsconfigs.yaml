@@ -147,6 +147,13 @@ spec:
                       DisableMetricsCollectionResourceOptimization is a field of CostManagementMetricsConfig to represent whether or not the operator will generate
                       reports for resource-optimization metrics. The default is false.
                     type: boolean
+                  disable_snapshot_collection:
+                    default: false
+                    description: |-
+                      DisableSnapshotCollection is a field of CostManagementMetricsConfig to represent whether or not the operator will collect
+                      VolumeSnapshot inventory from the cluster. When true, snapshot collection is skipped even if the VolumeSnapshot CRD is
+                      installed. The default is false.
+                    type: boolean
                   service_address:
                     default: https://thanos-querier.openshift-monitoring.svc:9091
                     description: |-
