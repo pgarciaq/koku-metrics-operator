@@ -191,6 +191,12 @@ type PrometheusSpec struct {
 	// +kubebuilder:default=false
 	DisableMetricsCollectionResourceOptimization *bool `json:"disable_metrics_collection_resource_optimization,omitempty"`
 
+	// DisableSnapshotCollection is a field of CostManagementMetricsConfig to represent whether or not the operator will collect
+	// VolumeSnapshot inventory from the cluster. When true, snapshot collection is skipped even if the VolumeSnapshot CRD is
+	// installed. The default is false.
+	// +kubebuilder:default=false
+	DisableSnapshotCollection *bool `json:"disable_snapshot_collection,omitempty"`
+
 	// FOR DEVELOPMENT ONLY.
 	// SvcAddress is a field of CostManagementMetricsConfig to represent the thanos-querier address.
 	// The default is `https://thanos-querier.openshift-monitoring.svc:9091`.

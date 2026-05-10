@@ -197,9 +197,21 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 	log.Info("reports generated for range", "start", formattedStart, "end", formattedEnd)
 	cr.Status.Prometheus.LastQuerySuccessTime = t
 
-	// Collect VolumeSnapshot inventory (uses Kubernetes API, not Prometheus).
-	// Non-fatal: failure here should not block cost report processing.
-	yearMonth := r.promCollector.TimeSeries.Start.Format("200601")
+	// since we've had a successful query, we should wipe the tracker to remove it from mem
+	retryTracker = make(map[time.Time]int)
+	return nil
+}
+
+// collectSnapshotInventory collects VolumeSnapshot inventory via the Kubernetes API.
+// It is independent of Prometheus and runs once per upload cycle.
+func collectSnapshotInventory(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.DirectoryConfig, yearMonth string) {
+	log := log.WithName("collectSnapshotInventory")
+
+	if cr.Spec.PrometheusConfig.DisableSnapshotCollection != nil && *cr.Spec.PrometheusConfig.DisableSnapshotCollection {
+		log.Info("snapshot collection disabled by spec")
+		return
+	}
+
 	snapResult := collector.GenerateSnapshotInventory(r.restConfig, dirCfg, yearMonth)
 	cr.Status.Snapshot.CRDAvailable = snapResult.CRDAvailable
 	cr.Status.Snapshot.SnapshotCount = snapResult.SnapshotCount
@@ -212,8 +224,4 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 			cr.Status.Snapshot.LastSuccessfulCollectionTime = metav1.Now()
 		}
 	}
-
-	// since we've had a successful query, we should wipe the tracker to remove it from mem
-	retryTracker = make(map[time.Time]int)
-	return nil
 }

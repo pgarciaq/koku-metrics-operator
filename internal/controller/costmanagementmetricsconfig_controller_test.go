@@ -1550,3 +1550,75 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 		})
 	})
 })
+
+func TestCollectSnapshotInventory_CRDNotAvailable(t *testing.T) {
+	// In envtest, snapshot.storage.k8s.io CRD is not registered, so
+	// collectSnapshotInventory should set CRDAvailable=false and no error.
+	if cfg == nil {
+		t.Skip("envtest not initialized (run via ginkgo)")
+	}
+
+	cr := &metricscfgv1beta1.MetricsConfig{
+		Spec: metricscfgv1beta1.MetricsConfigSpec{
+			PrometheusConfig: metricscfgv1beta1.PrometheusSpec{},
+		},
+	}
+	r := &MetricsConfigReconciler{restConfig: cfg}
+
+	collectSnapshotInventory(r, cr, nil, "202605")
+
+	if cr.Status.Snapshot.CRDAvailable {
+		t.Error("expected CRDAvailable=false when snapshot CRD is not registered in envtest")
+	}
+	if cr.Status.Snapshot.CollectionError != "" {
+		t.Errorf("expected no collection error, got: %s", cr.Status.Snapshot.CollectionError)
+	}
+	if cr.Status.Snapshot.SnapshotCount != 0 {
+		t.Errorf("expected SnapshotCount=0, got %d", cr.Status.Snapshot.SnapshotCount)
+	}
+}
+
+func TestCollectSnapshotInventory_DisabledBySpec(t *testing.T) {
+	// When DisableSnapshotCollection is true, the function should skip collection entirely.
+	cr := &metricscfgv1beta1.MetricsConfig{
+		Spec: metricscfgv1beta1.MetricsConfigSpec{
+			PrometheusConfig: metricscfgv1beta1.PrometheusSpec{
+				DisableSnapshotCollection: &trueValue,
+			},
+		},
+	}
+	r := &MetricsConfigReconciler{restConfig: nil}
+
+	collectSnapshotInventory(r, cr, nil, "202605")
+
+	// Status should remain zeroed since collection was skipped
+	if cr.Status.Snapshot.CRDAvailable {
+		t.Error("expected CRDAvailable=false when collection disabled")
+	}
+	if cr.Status.Snapshot.SnapshotCount != 0 {
+		t.Errorf("expected SnapshotCount=0, got %d", cr.Status.Snapshot.SnapshotCount)
+	}
+	if !cr.Status.Snapshot.LastSuccessfulCollectionTime.IsZero() {
+		t.Error("expected LastSuccessfulCollectionTime to be zero when disabled")
+	}
+}
+
+func TestCollectSnapshotInventory_NilConfig(t *testing.T) {
+	// When restConfig is nil (should not happen in production but guards against panics),
+	// collection should gracefully report CRD not available.
+	cr := &metricscfgv1beta1.MetricsConfig{
+		Spec: metricscfgv1beta1.MetricsConfigSpec{
+			PrometheusConfig: metricscfgv1beta1.PrometheusSpec{},
+		},
+	}
+	r := &MetricsConfigReconciler{restConfig: nil}
+
+	collectSnapshotInventory(r, cr, nil, "202605")
+
+	if cr.Status.Snapshot.CRDAvailable {
+		t.Error("expected CRDAvailable=false with nil config")
+	}
+	if cr.Status.Snapshot.CollectionError != "" {
+		t.Errorf("expected no error with nil config, got: %s", cr.Status.Snapshot.CollectionError)
+	}
+}

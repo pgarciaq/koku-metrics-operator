@@ -896,6 +896,11 @@ func (r *MetricsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	r.initialDataCollection = false
+
+	// Collect VolumeSnapshot inventory (independent of Prometheus health).
+	yearMonth := endTime.Format("200601")
+	collectSnapshotInventory(r, cr, dirCfg, yearMonth)
+
 	packager.FilesAction = packaging.CopyFiles
 	if endTime.Hour() == HOURS_IN_DAY {
 		// when we've reached the end of the day. move the files so we stop appending to them
