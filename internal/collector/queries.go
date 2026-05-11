@@ -92,6 +92,48 @@ var (
 			"((max_over_time(kube_pod_container_status_ready{container!='', container!='POD', pod!=''}[15m]) == 1) * on(pod, namespace) group_left(workload, workload_type) max by(pod, namespace, workload, workload_type) (max_over_time(namespace_workload_pod:kube_pod_owner:relabel{pod!=''}[15m])) * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
 			")",
 
+		// Desired replicas: the spec-level replica count for deployments, statefulsets, and daemonsets,
+		// broadcast to each per-pod container row via workload join.
+		// Pod info (many per workload) is LEFT; replica count (one per workload) is RIGHT.
+		"ros:desired_replicas": "max by(container, pod, namespace, workload) (max_over_time(kube_pod_container_info{container!='', container!='POD', pod!=''}[15m]) * on(pod, namespace) group_left(workload) max by(pod, namespace, workload) (max_over_time(namespace_workload_pod:kube_pod_owner:relabel{pod!=''}[15m])))" +
+			" * on(namespace, workload) group_left() (" +
+			"label_replace(" +
+			"(max by(namespace, workload, workload_type) (" +
+			"label_replace(kube_deployment_spec_replicas, 'workload', '$1', 'deployment', '(.+)') " +
+			"or label_replace(kube_statefulset_replicas, 'workload', '$1', 'statefulset', '(.+)') " +
+			"or label_replace(kube_daemonset_status_desired_number_scheduled, 'workload', '$1', 'daemonset', '(.+)')" +
+			") * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
+			", 'workload_type', 'deployment', 'workload_type', '')" +
+			" or label_replace(" +
+			"(max by(namespace, workload, workload_type) (" +
+			"label_replace(kube_deployment_spec_replicas, 'workload', '$1', 'deployment', '(.+)') " +
+			"or label_replace(kube_statefulset_replicas, 'workload', '$1', 'statefulset', '(.+)') " +
+			"or label_replace(kube_daemonset_status_desired_number_scheduled, 'workload', '$1', 'daemonset', '(.+)')" +
+			") * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
+			", 'workload_type', 'deployment', 'workload_type', '')" +
+			")",
+
+		// Available replicas: deployment available, statefulset ready, or daemonset available replicas,
+		// broadcast to each per-pod container row via workload join.
+		// Pod info (many per workload) is LEFT; replica count (one per workload) is RIGHT.
+		"ros:available_replicas": "max by(container, pod, namespace, workload) (max_over_time(kube_pod_container_info{container!='', container!='POD', pod!=''}[15m]) * on(pod, namespace) group_left(workload) max by(pod, namespace, workload) (max_over_time(namespace_workload_pod:kube_pod_owner:relabel{pod!=''}[15m])))" +
+			" * on(namespace, workload) group_left() (" +
+			"label_replace(" +
+			"(max by(namespace, workload, workload_type) (" +
+			"label_replace(kube_deployment_status_replicas_available, 'workload', '$1', 'deployment', '(.+)') " +
+			"or label_replace(kube_statefulset_status_replicas_ready, 'workload', '$1', 'statefulset', '(.+)') " +
+			"or label_replace(kube_daemonset_status_number_available, 'workload', '$1', 'daemonset', '(.+)')" +
+			") * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
+			", 'workload_type', 'deployment', 'workload_type', '')" +
+			" or label_replace(" +
+			"(max by(namespace, workload, workload_type) (" +
+			"label_replace(kube_deployment_status_replicas_available, 'workload', '$1', 'deployment', '(.+)') " +
+			"or label_replace(kube_statefulset_status_replicas_ready, 'workload', '$1', 'statefulset', '(.+)') " +
+			"or label_replace(kube_daemonset_status_number_available, 'workload', '$1', 'daemonset', '(.+)')" +
+			") * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
+			", 'workload_type', 'deployment', 'workload_type', '')" +
+			")",
+
 		// resource optimization NVIDIA GPU container level metrics queries
 		"ros:accelerator_frame_buffer_usage_min":     "(min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(min by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(min by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
 		"ros:accelerator_frame_buffer_usage_max":     "(max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(max by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(max by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
@@ -820,6 +862,24 @@ var (
 			MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
 			QueryValue: &saveQueryValue{
 				ValName: "workload-pod-count",
+			},
+			RowKey: []model.LabelName{"container", "pod", "namespace"},
+		},
+		query{
+			Name:        "desired-replicas",
+			QueryString: QueryMap["ros:desired_replicas"],
+			MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+			QueryValue: &saveQueryValue{
+				ValName: "desired-replicas",
+			},
+			RowKey: []model.LabelName{"container", "pod", "namespace"},
+		},
+		query{
+			Name:        "available-replicas",
+			QueryString: QueryMap["ros:available_replicas"],
+			MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+			QueryValue: &saveQueryValue{
+				ValName: "available-replicas",
 			},
 			RowKey: []model.LabelName{"container", "pod", "namespace"},
 		},

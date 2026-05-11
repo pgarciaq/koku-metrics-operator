@@ -82,6 +82,58 @@ func TestRosContainerRow_OOMCountZero(t *testing.T) {
 	}
 }
 
+func TestRosContainerRow_ReplicaColumns(t *testing.T) {
+	row := rosContainerRow{
+		dateTimes: &dateTimes{
+			ReportPeriodStart: "2026-03-01",
+			ReportPeriodEnd:   "2026-04-01",
+			IntervalStart:     "2026-03-15 10:00:00",
+			IntervalEnd:       "2026-03-15 10:15:00",
+		},
+		DesiredReplicas:   "3",
+		AvailableReplicas: "2",
+	}
+
+	csvRow := row.csvRow()
+	header := row.csvHeader()
+
+	if len(header) != len(csvRow) {
+		t.Fatalf("csvRow length %d != csvHeader length %d", len(csvRow), len(header))
+	}
+
+	desiredIdx := -1
+	availIdx := -1
+	podCountIdx := -1
+	for i, col := range header {
+		switch col {
+		case "desired_replicas":
+			desiredIdx = i
+		case "available_replicas":
+			availIdx = i
+		case "workload_pod_count":
+			podCountIdx = i
+		}
+	}
+	if desiredIdx < 0 {
+		t.Fatal("desired_replicas must be in csvHeader()")
+	}
+	if availIdx < 0 {
+		t.Fatal("available_replicas must be in csvHeader()")
+	}
+	if desiredIdx != podCountIdx+1 {
+		t.Errorf("desired_replicas should follow workload_pod_count, got index %d vs %d", desiredIdx, podCountIdx)
+	}
+	if availIdx != desiredIdx+1 {
+		t.Errorf("available_replicas should follow desired_replicas, got index %d vs %d", availIdx, desiredIdx)
+	}
+	if csvRow[desiredIdx] != "3" {
+		t.Errorf("csvRow desired_replicas = %q, want %q", csvRow[desiredIdx], "3")
+	}
+	if csvRow[availIdx] != "2" {
+		t.Errorf("csvRow available_replicas = %q, want %q", csvRow[availIdx], "2")
+	}
+}
+
 func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 	row := rosContainerRow{
 		dateTimes: &dateTimes{
