@@ -81,3 +81,51 @@ func TestRosContainerRow_OOMCountZero(t *testing.T) {
 		t.Errorf("zero OOM count = %q, want %q", csvRow[oomIdx], "0")
 	}
 }
+
+func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
+	row := rosContainerRow{
+		dateTimes: &dateTimes{
+			ReportPeriodStart: "2026-03-01",
+			ReportPeriodEnd:   "2026-04-01",
+			IntervalStart:     "2026-03-15 10:00:00",
+			IntervalEnd:       "2026-03-15 10:15:00",
+		},
+		nodeRow: nodeRow{
+			NodeCapacityCPUCores:    "8.000000",
+			NodeCapacityMemoryBytes: "33554432000.000000",
+		},
+	}
+
+	csvRow := row.csvRow()
+	header := row.csvHeader()
+
+	if len(header) != len(csvRow) {
+		t.Fatalf("csvRow length %d != csvHeader length %d", len(csvRow), len(header))
+	}
+
+	cpuCapIdx := -1
+	memCapIdx := -1
+	for i, col := range header {
+		if col == "node_capacity_cpu_cores" {
+			cpuCapIdx = i
+		}
+		if col == "node_capacity_memory_bytes" {
+			memCapIdx = i
+		}
+	}
+	if cpuCapIdx < 0 {
+		t.Fatal("node_capacity_cpu_cores must be in csvHeader()")
+	}
+	if memCapIdx < 0 {
+		t.Fatal("node_capacity_memory_bytes must be in csvHeader()")
+	}
+	if memCapIdx != cpuCapIdx+1 {
+		t.Errorf("node_capacity_memory_bytes should follow node_capacity_cpu_cores")
+	}
+	if csvRow[cpuCapIdx] != "8.000000" {
+		t.Errorf("csvRow node_capacity_cpu_cores = %q, want %q", csvRow[cpuCapIdx], "8.000000")
+	}
+	if csvRow[memCapIdx] != "33554432000.000000" {
+		t.Errorf("csvRow node_capacity_memory_bytes = %q, want %q", csvRow[memCapIdx], "33554432000.000000")
+	}
+}
