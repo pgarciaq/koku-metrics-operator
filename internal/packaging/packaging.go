@@ -174,6 +174,9 @@ func (p *FilePackager) buildLocalCSVFileList(fileList []os.FileInfo, stagingDire
 		} else {
 			tracker.costfiles[idx] = csvFilePath
 		}
+		if strings.Contains(file.Name(), "storage-usage") {
+			tracker.rosfiles[idx] = csvFilePath
+		}
 		tracker.allfiles[idx] = csvFilePath
 	}
 	return tracker
