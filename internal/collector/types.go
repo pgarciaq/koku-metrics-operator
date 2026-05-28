@@ -626,7 +626,9 @@ type rosNamespaceRow struct {
 	*dateTimes
 	Namespace         string `mapstructure:"namespace"`
 	CPURequestSum     string `mapstructure:"cpu-request-namespace-sum"`
+	CPURequestUsed    string `mapstructure:"cpu-request-namespace-used"`
 	CPULimitSum       string `mapstructure:"cpu-limit-namespace-sum"`
+	CPULimitUsed      string `mapstructure:"cpu-limit-namespace-used"`
 	CPUUsageAvg       string `mapstructure:"cpu-usage-namespace-avg"`
 	CPUUsageMax       string `mapstructure:"cpu-usage-namespace-max"`
 	CPUUsageMin       string `mapstructure:"cpu-usage-namespace-min"`
@@ -634,7 +636,9 @@ type rosNamespaceRow struct {
 	CPUThrottleMax    string `mapstructure:"cpu-throttle-namespace-max"`
 	CPUThrottleMin    string `mapstructure:"cpu-throttle-namespace-min"`
 	MemoryRequestSum  string `mapstructure:"memory-request-namespace-sum"`
+	MemoryRequestUsed string `mapstructure:"memory-request-namespace-used"`
 	MemoryLimitSum    string `mapstructure:"memory-limit-namespace-sum"`
+	MemoryLimitUsed   string `mapstructure:"memory-limit-namespace-used"`
 	MemoryUsageAvg    string `mapstructure:"memory-usage-namespace-avg"`
 	MemoryUsageMax    string `mapstructure:"memory-usage-namespace-max"`
 	MemoryUsageMin    string `mapstructure:"memory-usage-namespace-min"`
@@ -655,7 +659,9 @@ func (rosNamespaceRow) csvHeader() []string {
 		"interval_end",
 		"namespace",
 		"cpu_request_namespace_sum",
+		"cpu_request_namespace_used",
 		"cpu_limit_namespace_sum",
+		"cpu_limit_namespace_used",
 		"cpu_usage_namespace_avg",
 		"cpu_usage_namespace_max",
 		"cpu_usage_namespace_min",
@@ -663,7 +669,9 @@ func (rosNamespaceRow) csvHeader() []string {
 		"cpu_throttle_namespace_max",
 		"cpu_throttle_namespace_min",
 		"memory_request_namespace_sum",
+		"memory_request_namespace_used",
 		"memory_limit_namespace_sum",
+		"memory_limit_namespace_used",
 		"memory_usage_namespace_avg",
 		"memory_usage_namespace_max",
 		"memory_usage_namespace_min",
@@ -685,7 +693,9 @@ func (row rosNamespaceRow) csvRow() []string {
 		row.IntervalEnd,
 		row.Namespace,
 		row.CPURequestSum,
+		row.CPURequestUsed,
 		row.CPULimitSum,
+		row.CPULimitUsed,
 		row.CPUUsageAvg,
 		row.CPUUsageMax,
 		row.CPUUsageMin,
@@ -693,7 +703,9 @@ func (row rosNamespaceRow) csvRow() []string {
 		row.CPUThrottleMax,
 		row.CPUThrottleMin,
 		row.MemoryRequestSum,
+		row.MemoryRequestUsed,
 		row.MemoryLimitSum,
+		row.MemoryLimitUsed,
 		row.MemoryUsageAvg,
 		row.MemoryUsageMax,
 		row.MemoryUsageMin,
