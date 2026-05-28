@@ -32,8 +32,9 @@ var (
 	nodeFilePrefix         = "cm-openshift-node-usage-"
 	namespaceFilePrefix    = "cm-openshift-namespace-usage-"
 	nvidiaGpuFilePrefix    = "cm-openshift-nvidia-gpu-usage-"
-	rosContainerFilePrefix = "ros-openshift-container-"
-	rosNamespaceFilePrefix = "ros-openshift-namespace-"
+	rosContainerFilePrefix    = "ros-openshift-container-"
+	rosNamespaceFilePrefix    = "ros-openshift-namespace-"
+	rosClusterQuotaFilePrefix = "ros-openshift-cluster-quota-"
 
 	statusTimeFormat = "2006-01-02 15:04:05"
 
@@ -583,6 +584,11 @@ func generateCostNvidiaGpuMetricsReport(log gologr.Logger, c *PrometheusCollecto
 
 func generateResourceOptimizationReports(log gologr.Logger, c *PrometheusCollector, dirCfg *dirconfig.DirectoryConfig, nodeRows mappedCSVStruct, yearMonth string) error {
 	ts := c.TimeSeries.End
+
+	if err := generateROSClusterQuotaReport(log, c, dirCfg, yearMonth, ts); err != nil {
+		return err
+	}
+
 	namespacesAreEnabled, err := areNamespacesEnabled(c, ts)
 	if err != nil {
 		return err
@@ -660,6 +666,48 @@ func generateResourceOptimizationReports(log gologr.Logger, c *PrometheusCollect
 	log.WithName("writeResults").Info("writing resource-optimization namespace results to file", "filename", rosNamespaceReport.file.getName())
 	if err := rosNamespaceReport.writeReport(); err != nil {
 		return fmt.Errorf("failed to write resource-optimization namespace report: %v", err)
+	}
+
+	return nil
+}
+
+func generateROSClusterQuotaReport(log gologr.Logger, c *PrometheusCollector, dirCfg *dirconfig.DirectoryConfig, yearMonth string, ts time.Time) error {
+	log.Info(fmt.Sprintf("querying for resource-optimization cluster quota metrics for ts: %+v", ts))
+	rosClusterQuotaResults := mappedResults{}
+
+	if err := c.getQueryResults(ts, rosClusterQuotaQueries, &rosClusterQuotaResults, MaxRetries); err != nil {
+		return err
+	}
+
+	if len(rosClusterQuotaResults) == 0 {
+		log.Info("no ClusterResourceQuota metrics found, skipping cluster quota report generation")
+		return nil
+	}
+
+	rosClusterQuotaRows := make(mappedCSVStruct)
+	for crqName, val := range rosClusterQuotaResults {
+		usage := newROSClusterQuotaRow(c.TimeSeries)
+		if err := getStruct(val, &usage, rosClusterQuotaRows, crqName); err != nil {
+			return err
+		}
+	}
+
+	emptyROSClusterQuotaRow := newROSClusterQuotaRow(c.TimeSeries)
+	rosClusterQuotaReport := report{
+		file: &file{
+			name: rosClusterQuotaFilePrefix + yearMonth + ".csv",
+			path: dirCfg.Reports.Path,
+		},
+		data: &data{
+			queryData: rosClusterQuotaRows,
+			headers:   emptyROSClusterQuotaRow.csvHeader(),
+			prefix:    emptyROSClusterQuotaRow.dateTimes.string(),
+		},
+	}
+
+	log.WithName("writeResults").Info("writing resource-optimization cluster quota results to file", "filename", rosClusterQuotaReport.file.getName())
+	if err := rosClusterQuotaReport.writeReport(); err != nil {
+		return fmt.Errorf("failed to write resource-optimization cluster quota report: %v", err)
 	}
 
 	return nil

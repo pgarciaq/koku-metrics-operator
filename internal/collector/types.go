@@ -58,6 +58,9 @@ func newROSContainerRow(ts *promv1.Range) rosContainerRow {
 func newROSNamespaceRow(ts *promv1.Range) rosNamespaceRow {
 	return rosNamespaceRow{dateTimes: newDates(ts)}
 }
+func newROSClusterQuotaRow(ts *promv1.Range) rosClusterQuotaRow {
+	return rosClusterQuotaRow{dateTimes: newDates(ts)}
+}
 
 type namespaceRow struct {
 	*dateTimes
@@ -720,3 +723,54 @@ func (row rosNamespaceRow) csvRow() []string {
 }
 
 func (row rosNamespaceRow) string() string { return strings.Join(row.csvRow(), ",") }
+
+type rosClusterQuotaRow struct {
+	*dateTimes
+	ClusterQuotaName  string `mapstructure:"cluster_quota_name"`
+	CPURequestHard    string `mapstructure:"cpu-request-hard"`
+	CPURequestUsed    string `mapstructure:"cpu-request-used"`
+	CPULimitHard      string `mapstructure:"cpu-limit-hard"`
+	CPULimitUsed      string `mapstructure:"cpu-limit-used"`
+	MemoryRequestHard string `mapstructure:"memory-request-hard"`
+	MemoryRequestUsed string `mapstructure:"memory-request-used"`
+	MemoryLimitHard   string `mapstructure:"memory-limit-hard"`
+	MemoryLimitUsed   string `mapstructure:"memory-limit-used"`
+}
+
+func (rosClusterQuotaRow) csvHeader() []string {
+	return []string{
+		"report_period_start",
+		"report_period_end",
+		"interval_start",
+		"interval_end",
+		"cluster_quota_name",
+		"cpu_request_hard",
+		"cpu_request_used",
+		"cpu_limit_hard",
+		"cpu_limit_used",
+		"memory_request_hard",
+		"memory_request_used",
+		"memory_limit_hard",
+		"memory_limit_used",
+	}
+}
+
+func (row rosClusterQuotaRow) csvRow() []string {
+	return []string{
+		row.ReportPeriodStart,
+		row.ReportPeriodEnd,
+		row.IntervalStart,
+		row.IntervalEnd,
+		row.ClusterQuotaName,
+		row.CPURequestHard,
+		row.CPURequestUsed,
+		row.CPULimitHard,
+		row.CPULimitUsed,
+		row.MemoryRequestHard,
+		row.MemoryRequestUsed,
+		row.MemoryLimitHard,
+		row.MemoryLimitUsed,
+	}
+}
+
+func (row rosClusterQuotaRow) string() string { return strings.Join(row.csvRow(), ",") }

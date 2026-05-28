@@ -1,0 +1,2 @@
+report_period_start,report_period_end,interval_start,interval_end,cluster_quota_name,cpu_request_hard,cpu_request_used,cpu_limit_hard,cpu_limit_used,memory_request_hard,memory_request_used,memory_limit_hard,memory_limit_used
+2020-11-01 00:00:00 +0000 UTC,2020-12-01 00:00:00 +0000 UTC,2020-11-06 18:00:00 +0000 UTC,2020-11-06 18:59:59 +0000 UTC,team-a,10.000000,3.000000,20.000000,5.000000,1073741824.000000,536870912.000000,2147483648.000000,1073741824.000000
