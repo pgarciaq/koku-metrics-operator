@@ -157,6 +157,7 @@ func TestGenerateReports(t *testing.T) {
 		Load(filepath.Join("test_files", "test_data", query.Name), res, t)
 		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
+	addClusterQuotaMockResults(mapResults, t, false)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -218,6 +219,7 @@ func TestGenerateReportsNoROS(t *testing.T) {
 		Load(filepath.Join("test_files", "test_data", query.Name), res, t)
 		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
+	addClusterQuotaMockResults(mapResults, t, false)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -260,6 +262,7 @@ func TestGenerateReportsNoEnabledROS(t *testing.T) {
 	// add the namespace specific query
 	res := &model.Vector{}
 	mapResults[rosNamespaceFilter.QueryString] = &mockPromResult{value: *res}
+	addClusterQuotaMockResults(mapResults, t, false)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -314,6 +317,7 @@ func TestGenerateReportsNoCost(t *testing.T) {
 		Load(filepath.Join("test_files", "test_data", query.Name), res, t)
 		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
+	addClusterQuotaMockResults(mapResults, t, false)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -376,6 +380,7 @@ func TestGenerateReportsQueryErrors(t *testing.T) {
 			Load(filepath.Join("test_files", "test_data", query.Name), res, t)
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
+		addClusterQuotaMockResults(mapResults, t, false)
 
 		return mapResults
 	}
