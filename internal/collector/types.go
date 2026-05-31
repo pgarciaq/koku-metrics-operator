@@ -61,6 +61,12 @@ func newROSNamespaceRow(ts *promv1.Range) rosNamespaceRow {
 func newROSClusterQuotaRow(ts *promv1.Range) rosClusterQuotaRow {
 	return rosClusterQuotaRow{dateTimes: newDates(ts)}
 }
+func newROSVMRow(ts *promv1.Range) rosVMRow {
+	return rosVMRow{
+		IntervalStart: ts.Start.String(),
+		IntervalEnd:   ts.End.String(),
+	}
+}
 
 type namespaceRow struct {
 	*dateTimes
@@ -774,3 +780,80 @@ func (row rosClusterQuotaRow) csvRow() []string {
 }
 
 func (row rosClusterQuotaRow) string() string { return strings.Join(row.csvRow(), ",") }
+
+// rosVMRow is the 15-minute OpenShift Virtualization usage report for ros-ocp-backend.
+type rosVMRow struct {
+	IntervalStart           string `mapstructure:"interval_start"`
+	IntervalEnd             string `mapstructure:"interval_end"`
+	VMName                  string `mapstructure:"name"`
+	Namespace               string `mapstructure:"namespace"`
+	NodeName                string `mapstructure:"node"`
+	GuestOS                 string `mapstructure:"guest_os"`
+	CPUUsageMC              string `mapstructure:"cpu_usage_mc"`
+	CPURequestMC            string `mapstructure:"cpu_request_mc"`
+	CPULimitMC              string `mapstructure:"cpu_limit_mc"`
+	MemoryUsageKiB          string `mapstructure:"memory_usage_kib"`
+	MemoryRequestKiB        string `mapstructure:"memory_request_kib"`
+	MemoryAvailableKiB      string `mapstructure:"memory_available_kib"`
+	DiskAllocatedBytes      string `mapstructure:"disk_allocated_bytes"`
+	FilesystemUsedBytes     string `mapstructure:"filesystem_used_bytes"`
+	FilesystemCapacityBytes string `mapstructure:"filesystem_capacity_bytes"`
+	DiskReadIOPS            string `mapstructure:"disk_read_iops"`
+	DiskWriteIOPS           string `mapstructure:"disk_write_iops"`
+	DiskReadBytesPerSec     string `mapstructure:"disk_read_bytes_per_sec"`
+	DiskWriteBytesPerSec    string `mapstructure:"disk_write_bytes_per_sec"`
+}
+
+func (rosVMRow) csvHeader() []string {
+	return []string{
+		"interval_start",
+		"interval_end",
+		"vm_name",
+		"namespace",
+		"node_name",
+		"guest_os",
+		"cpu_usage_mc",
+		"cpu_request_mc",
+		"cpu_limit_mc",
+		"memory_usage_kib",
+		"memory_request_kib",
+		"memory_available_kib",
+		"disk_allocated_bytes",
+		"filesystem_used_bytes",
+		"filesystem_capacity_bytes",
+		"disk_read_iops",
+		"disk_write_iops",
+		"disk_read_bytes_per_sec",
+		"disk_write_bytes_per_sec",
+	}
+}
+
+func (row rosVMRow) csvRow() []string {
+	return []string{
+		row.IntervalStart,
+		row.IntervalEnd,
+		row.VMName,
+		row.Namespace,
+		row.NodeName,
+		row.GuestOS,
+		row.CPUUsageMC,
+		row.CPURequestMC,
+		row.CPULimitMC,
+		row.MemoryUsageKiB,
+		row.MemoryRequestKiB,
+		row.MemoryAvailableKiB,
+		row.DiskAllocatedBytes,
+		row.FilesystemUsedBytes,
+		row.FilesystemCapacityBytes,
+		row.DiskReadIOPS,
+		row.DiskWriteIOPS,
+		row.DiskReadBytesPerSec,
+		row.DiskWriteBytesPerSec,
+	}
+}
+
+func (row rosVMRow) string() string { return strings.Join(row.csvRow(), ",") }
+
+func (row rosVMRow) reportPrefix() string {
+	return row.IntervalStart + "," + row.IntervalEnd
+}

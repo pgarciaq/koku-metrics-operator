@@ -227,40 +227,65 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		}
 	}
 
+	costEnabled := cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement != nil &&
+		!*cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement
+	rosEnabled := cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization != nil &&
+		!*cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization
+	vmEnabled := shouldCollectVMMetrics(c)
+
+	var vmAggregator *vmHourlyAggregator
+	if (costEnabled || rosEnabled) && vmEnabled {
+		vmAggregator = newVMHourlyAggregator(c.TimeSeries)
+	}
+
 	// ######## this actually generates the node report and the others for cost-management
-	if cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement != nil && !*cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement {
-		if err := generateCostManagementReports(log, c, dirCfg, nodeRows, yearMonth); err != nil {
+	if costEnabled {
+		if err := generateCostManagementReports(log, c, dirCfg, nodeRows, yearMonth, vmEnabled); err != nil {
 			return err
 		}
 	}
 
-	// ######## generate resource-optimization reports
-	if cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization != nil && !*cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization {
-		rosCollector := &PrometheusCollector{
+	// ######## generate resource-optimization reports and 15-minute VM metrics
+	if rosEnabled || vmEnabled {
+		quarterCollector := &PrometheusCollector{
 			PromConn:           c.PromConn,
 			PromCfg:            c.PromCfg,
 			ContextTimeout:     c.ContextTimeout,
+			RestConfig:         c.RestConfig,
 			serviceaccountPath: c.serviceaccountPath,
 		}
 		timeRange := c.TimeSeries
 		start := timeRange.Start.Add(1 * time.Second)
 		end := start.Add(14*time.Minute + 59*time.Second)
 		var err error
-		for i := 1; i < 5; i++ {
+		for i := 1; i <= vmQuarterHours; i++ {
 			timeRange.Start = start
 			timeRange.End = end
-			rosCollector.TimeSeries = timeRange
-			if err = generateResourceOptimizationReports(log, rosCollector, dirCfg, nodeRows, yearMonth); err != nil {
-				if !errors.Is(err, ErrROSNoEnabledNamespaces) {
-					return err
+			quarterCollector.TimeSeries = timeRange
+			if rosEnabled {
+				if err = generateResourceOptimizationReports(log, quarterCollector, dirCfg, nodeRows, yearMonth); err != nil {
+					if !errors.Is(err, ErrROSNoEnabledNamespaces) {
+						return err
+					}
+				}
+			}
+			if vmEnabled {
+				if vmErr := collectVMQuarterHour(log, quarterCollector, dirCfg, yearMonth, vmAggregator); vmErr != nil {
+					return vmErr
 				}
 			}
 			start = start.Add(15 * time.Minute)
 			end = end.Add(15 * time.Minute)
 		}
 
-		if errors.Is(err, ErrROSNoEnabledNamespaces) {
+		if rosEnabled && errors.Is(err, ErrROSNoEnabledNamespaces) {
 			return ErrROSNoEnabledNamespaces
+		}
+	}
+
+	if costEnabled && vmEnabled {
+		if err := generateCostVMMetricsReportFromAggregator(log, c, dirCfg, yearMonth, vmAggregator); err != nil {
+			return err
 		}
 	}
 
@@ -277,7 +302,14 @@ func GenerateSnapshotInventory(restConfig *rest.Config, dirCfg *dirconfig.Direct
 	return GenerateSnapshotReport(cfg, dirCfg, yearMonth)
 }
 
-func generateCostManagementReports(log gologr.Logger, c *PrometheusCollector, dirCfg *dirconfig.DirectoryConfig, nodeRows mappedCSVStruct, yearMonth string) error {
+func generateCostManagementReports(
+	log gologr.Logger,
+	c *PrometheusCollector,
+	dirCfg *dirconfig.DirectoryConfig,
+	nodeRows mappedCSVStruct,
+	yearMonth string,
+	vmMetricsDeferred bool,
+) error {
 
 	// cost node metrics
 	if err := generateCostNodeMetricsReport(log, c, dirCfg, nodeRows, yearMonth); err != nil {
@@ -294,9 +326,11 @@ func generateCostManagementReports(log gologr.Logger, c *PrometheusCollector, di
 		return err
 	}
 
-	// cost vm metrics
-	if err := generateCostVMMetricsReport(log, c, dirCfg, yearMonth); err != nil {
-		return err
+	// cost vm metrics are produced from 15-minute samples when KubeVirt is available
+	if !vmMetricsDeferred {
+		if err := generateCostVMMetricsReport(log, c, dirCfg, yearMonth); err != nil {
+			return err
+		}
 	}
 
 	// cost namespace metric

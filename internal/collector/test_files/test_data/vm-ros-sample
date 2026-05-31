@@ -1,0 +1,14 @@
+[
+    {
+        "metric": {
+            "name": "rhel-9-anaconda-98",
+            "namespace": "default",
+            "node": "ip-10-0-184-152.us-east-2.compute.internal",
+            "os": "linux"
+        },
+        "value": [
+            1604685600,
+            "100"
+        ]
+    }
+]

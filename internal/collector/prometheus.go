@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/rest"
 
 	metricscfgv1beta1 "github.com/project-koku/koku-metrics-operator/api/v1beta1"
 )
@@ -151,6 +152,7 @@ type PrometheusCollector struct {
 	PromCfg        *PrometheusConfig
 	TimeSeries     *promv1.Range
 	ContextTimeout time.Duration
+	RestConfig     *rest.Config
 
 	serviceaccountPath string
 }
