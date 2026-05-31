@@ -741,6 +741,7 @@ func (r *MetricsConfigReconciler) setAuthAndUpload(ctx context.Context, cr *metr
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list
 // +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list
+// +kubebuilder:rbac:groups=instancetype.kubevirt.io,resources=virtualmachineclusterinstancetypes,verbs=get;list
 // +kubebuilder:rbac:groups=core,namespace=koku-metrics-operator,resources=pods;services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets;serviceaccounts,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=apps,namespace=koku-metrics-operator,resources=deployments,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheuses/api,verbs=get;create;update
@@ -877,6 +878,7 @@ func (r *MetricsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Collect VolumeSnapshot inventory (independent of Prometheus health).
 	yearMonth := endTime.Format("200601")
 	collectSnapshotInventory(r, cr, dirCfg, yearMonth)
+	collectClusterInstanceTypes(r, cr, dirCfg)
 
 	packager.FilesAction = packaging.CopyFiles
 	if endTime.Hour() == HOURS_IN_DAY {

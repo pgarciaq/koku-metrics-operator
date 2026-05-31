@@ -161,23 +161,30 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// buildLocalCSVFileList gets the list of files in the staging directory
+const clusterInstanceTypesUploadName = "cluster_instance_types.json"
+
+// buildLocalCSVFileList gets the list of files in the staging directory.
 func (p *FilePackager) buildLocalCSVFileList(fileList []os.FileInfo, stagingDirectory string) fileTracker {
 	tracker := newFileTracker()
 	for idx, file := range fileList {
+		filePath := filepath.Join(stagingDirectory, file.Name())
+		if strings.Contains(file.Name(), "cluster_instance_types") && strings.HasSuffix(file.Name(), ".json") {
+			tracker.rosfiles[idx] = filePath
+			tracker.allfiles[idx] = filePath
+			continue
+		}
 		if !strings.HasSuffix(file.Name(), ".csv") {
 			continue
 		}
-		csvFilePath := filepath.Join(stagingDirectory, file.Name())
 		if strings.Contains(file.Name(), "ros-openshift") {
-			tracker.rosfiles[idx] = csvFilePath
+			tracker.rosfiles[idx] = filePath
 		} else {
-			tracker.costfiles[idx] = csvFilePath
+			tracker.costfiles[idx] = filePath
 		}
 		if strings.Contains(file.Name(), "storage-usage") {
-			tracker.rosfiles[idx] = csvFilePath
+			tracker.rosfiles[idx] = filePath
 		}
-		tracker.allfiles[idx] = csvFilePath
+		tracker.allfiles[idx] = filePath
 	}
 	return tracker
 }
@@ -192,6 +199,10 @@ func (p *FilePackager) getManifest(archiveFiles fileTracker, filePath string, cr
 	}
 	var rosFiles []string
 	for idx, rosFile := range archiveFiles.rosfiles {
+		if strings.Contains(rosFile, "cluster_instance_types") {
+			rosFiles = append(rosFiles, clusterInstanceTypesUploadName)
+			continue
+		}
 		uploadName := p.createCSVUploadName(rosFile, idx)
 		rosFiles = append(rosFiles, uploadName)
 	}
@@ -264,7 +275,12 @@ func (p *FilePackager) writeTarball(tarFileName, manifestFileName string, archiv
 
 	// add the files to the tarFile
 	for idx, filePath := range archiveFiles {
-		if strings.HasSuffix(filePath, ".csv") {
+		switch {
+		case strings.Contains(filePath, "cluster_instance_types") && strings.HasSuffix(filePath, ".json"):
+			if err := p.addFileToTarWriter(clusterInstanceTypesUploadName, filePath, tw); err != nil {
+				return fmt.Errorf("writeTarball: failed to create tar file: %v", err)
+			}
+		case strings.HasSuffix(filePath, ".csv"):
 			uploadName := p.createCSVUploadName(filePath, idx)
 			if err := p.addFileToTarWriter(uploadName, filePath, tw); err != nil {
 				return fmt.Errorf("writeTarball: failed to create tar file: %v", err)
@@ -463,7 +479,9 @@ func (p *FilePackager) moveOrCopyFiles(cr *metricscfgv1beta1.MetricsConfig) ([]o
 
 	log.Info("moving or copying report files to staging directory")
 	for _, file := range fileList {
-		if !strings.HasSuffix(file.Name(), ".csv") {
+		isCSV := strings.HasSuffix(file.Name(), ".csv")
+		isClusterInstanceTypesJSON := strings.Contains(file.Name(), "cluster_instance_types") && strings.HasSuffix(file.Name(), ".json")
+		if !isCSV && !isClusterInstanceTypesJSON {
 			continue
 		}
 
