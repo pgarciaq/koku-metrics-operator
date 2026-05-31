@@ -217,3 +217,22 @@ Fields for metrics related to namespaces:
 * `namespace_running_pods_avg`: The average number of pods in a running state in the namespace over a 15 minute window.
 * `namespace_total_pods_max`: The maximum total number of pods (all phases) observed in the namespace over a 15 minute window.
 * `namespace_total_pods_avg`: The average total number of pods (all phases) in the namespace over a 15 minute window.
+
+### 3. OpenShift Virtualization VM Metrics (ROS)
+
+15-minute **`ros-openshift-vm-usage-*.csv`** for VM recommendations (ros-ocp-backend). Collected by
+[`rosVMQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/vm_ros_queries.go)
+(15 Prometheus queries per window). See [`ros:vm_restart_count`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/queries.go) for the crash-loop query.
+
+Key fields (in addition to common interval timestamps):
+
+* `vm_name`, `namespace`, `node_name`: VM identity.
+* `guest_os`: Guest OS label from `kubevirt_vmi_info` (may be empty).
+* `cpu_usage_mc`, `cpu_request_mc`, `cpu_limit_mc`: CPU usage and allocation (millicores).
+* `mem_usage_kib`, `mem_request_kib`, `mem_limit_kib`: Memory usage and allocation.
+* `memory_available_kib`: Guest-agent metric when QEMU guest agent is installed (optional).
+* `disk_allocated_bytes`, `filesystem_used_bytes`, `filesystem_capacity_bytes`: Disk metrics.
+* `disk_read_iops`, `disk_write_iops`, `disk_read_bytes_per_sec`, `disk_write_bytes_per_sec`: I/O.
+* **`restart_count`**: Count of transitions into the `Running` phase during the 15-minute interval,
+  derived from `kubevirt_vmi_phase_transition_time_seconds`. Summed daily by ROS for crash-loop
+  detection (notification **48** when the term-window total ≥ `stability.crash_loop_restart_threshold`).

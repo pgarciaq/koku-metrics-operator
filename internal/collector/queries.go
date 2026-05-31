@@ -57,6 +57,7 @@ var (
 		"ros:vm_disk_read_bytes_per_sec": "sum by (name, namespace, node) (rate(kubevirt_vmi_storage_read_traffic_bytes_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 		"ros:vm_disk_write_bytes_per_sec": "sum by (name, namespace, node) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 		"ros:vm_info":                    "max by (name, namespace, node, os) (kubevirt_vmi_info{phase='running', name!='', namespace!=''})",
+		// ROS VM crash-loop signal: phase transitions into Running per collection step (see vm-ros-restart-count).
 		"ros:vm_restart_count":           "sum by (name, namespace, node) (clamp_min(changes(kubevirt_vmi_phase_transition_time_seconds{phase='Running', name!='', namespace!=''}[STEP]) - 1, 0)) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 
 		// cost NVIDIA GPU metrics queries, including MIG
