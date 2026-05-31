@@ -803,6 +803,17 @@ type rosVMRow struct {
 	DiskReadBytesPerSec     string `mapstructure:"disk_read_bytes_per_sec"`
 	DiskWriteBytesPerSec    string `mapstructure:"disk_write_bytes_per_sec"`
 	RestartCount            string `mapstructure:"restart_count"`
+	GPUCount                string `mapstructure:"gpu_count"`
+	GPUModel                string `mapstructure:"gpu_model"`
+	GPUUtilizationAvg       string `mapstructure:"gpu_utilization_avg"`
+	GPUUtilizationMax       string `mapstructure:"gpu_utilization_max"`
+	GPUFBUsedAvgMiB         string `mapstructure:"gpu_fb_used_avg_mib"`
+	GPUFBUsedMaxMiB         string `mapstructure:"gpu_fb_used_max_mib"`
+	GPUSMActiveAvg          string `mapstructure:"gpu_sm_active_avg"`
+	GPUTensorActiveAvg      string `mapstructure:"gpu_tensor_active_avg"`
+	GPUDRAMActiveAvg        string `mapstructure:"gpu_dram_active_avg"`
+	GPUMIGProfile           string `mapstructure:"gpu_mig_profile"`
+	GPUMaxSlices            string `mapstructure:"gpu_max_slices"`
 }
 
 func (rosVMRow) csvHeader() []string {
@@ -827,6 +838,17 @@ func (rosVMRow) csvHeader() []string {
 		"disk_read_bytes_per_sec",
 		"disk_write_bytes_per_sec",
 		"restart_count",
+		"gpu_count",
+		"gpu_model",
+		"gpu_utilization_avg",
+		"gpu_utilization_max",
+		"gpu_fb_used_avg_mib",
+		"gpu_fb_used_max_mib",
+		"gpu_sm_active_avg",
+		"gpu_tensor_active_avg",
+		"gpu_dram_active_avg",
+		"gpu_mig_profile",
+		"gpu_max_slices",
 	}
 }
 
@@ -852,6 +874,17 @@ func (row rosVMRow) csvRow() []string {
 		row.DiskReadBytesPerSec,
 		row.DiskWriteBytesPerSec,
 		row.RestartCount,
+		row.GPUCount,
+		row.GPUModel,
+		row.GPUUtilizationAvg,
+		row.GPUUtilizationMax,
+		row.GPUFBUsedAvgMiB,
+		row.GPUFBUsedMaxMiB,
+		row.GPUSMActiveAvg,
+		row.GPUTensorActiveAvg,
+		row.GPUDRAMActiveAvg,
+		row.GPUMIGProfile,
+		row.GPUMaxSlices,
 	}
 }
 

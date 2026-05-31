@@ -58,6 +58,12 @@ func collectVMQuarterHour(
 		return err
 	}
 
+	gpuResults := mappedResults{}
+	if err := c.getQueryResults(c.TimeSeries.End, rosVMGpuQueries, &gpuResults, MaxRetries); err != nil {
+		return err
+	}
+	mergeVMGPUIntoResults(vmResults, gpuResults)
+
 	if len(vmResults) == 0 {
 		log.Info("no running VM metrics returned for interval")
 		return nil
