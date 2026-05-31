@@ -15,6 +15,7 @@ import (
 
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"k8s.io/client-go/rest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	metricscfgv1beta1 "github.com/project-koku/koku-metrics-operator/api/v1beta1"
@@ -435,14 +436,17 @@ func TestGenerateReportsQueryErrors(t *testing.T) {
 		t.Errorf("GenerateReports %s was expected, got %v", podError, err)
 	}
 
-	// Test VM error
+	// Test VM error (15-minute ROS VM queries when KubeVirt collection is enabled)
 	mapResults = setupTestData()
+	kubeVirtCRDChecker = func(*rest.Config) bool { return true }
+	defer func() { kubeVirtCRDChecker = IsKubeVirtCRDAvailable }()
 	fakeCollector.PromConn = mockPrometheusConnection{
 		mappedResults: &mapResults,
 		t:             t,
 	}
+	fakeCollector.RestConfig = &rest.Config{}
 	vmError := "vm error"
-	for _, q := range *vmQueries {
+	for _, q := range *rosVMQueries {
 		mapResults[q.QueryString] = &mockPromResult{err: errors.New(vmError)}
 	}
 	err = GenerateReports(fakeCR, fakeDirCfg, fakeCollector)

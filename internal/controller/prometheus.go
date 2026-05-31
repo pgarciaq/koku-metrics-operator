@@ -182,6 +182,7 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 	}
 
 	log.Info("generating reports for range", "start", formattedStart, "end", formattedEnd)
+	r.promCollector.RestConfig = r.restConfig
 	if err := collector.GenerateReports(cr, dirCfg, r.promCollector); err != nil {
 		cr.Status.Reports.DataCollected = false
 		if errors.Is(err, collector.ErrNoData) {
