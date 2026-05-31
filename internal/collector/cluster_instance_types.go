@@ -28,10 +28,18 @@ const (
 	clusterInstanceTypesFileName = "cluster_instance_types.json"
 	instanceTypeAPIGroup         = "instancetype.kubevirt.io"
 	instanceTypeResource         = "virtualmachineclusterinstancetypes"
+	preferenceResource           = "virtualmachineclusterpreferences"
 	instanceTypeClassLabel       = "instancetype.kubevirt.io/class"
+	vmAPIGroup                   = "kubevirt.io"
+	vmResource                   = "virtualmachines"
 )
 
-var instanceTypeAPIVersions = []string{"v1beta1", "v1alpha2"}
+var (
+	instanceTypeAPIVersions = []string{"v1beta1", "v1alpha2"}
+	preferenceAPIVersions   = []string{"v1beta1", "v1alpha2"}
+	preferenceGVRFunc       = preferenceGVR
+	vmGVRFunc               = vmGVR
+)
 
 // ClusterInstanceTypeEntry is one VirtualMachineClusterInstancetype exported for ROS.
 type ClusterInstanceTypeEntry struct {
@@ -42,11 +50,19 @@ type ClusterInstanceTypeEntry struct {
 	GPUs      int32  `json:"gpus"`
 }
 
+// ClusterPreferenceEntry is one VirtualMachineClusterPreference exported for ROS.
+type ClusterPreferenceEntry struct {
+	Name  string `json:"name"`
+	Class string `json:"class"`
+}
+
 // ClusterInstanceTypesDocument is written to cluster_instance_types.json in the upload tarball.
 type ClusterInstanceTypesDocument struct {
 	ClusterUUID   string                     `json:"cluster_uuid"`
 	CollectedAt   time.Time                  `json:"collected_at"`
 	InstanceTypes []ClusterInstanceTypeEntry `json:"instance_types"`
+	Preferences   []ClusterPreferenceEntry   `json:"preferences,omitempty"`
+	VMPreferences map[string]string          `json:"vm_preferences,omitempty"`
 }
 
 // ClusterInstanceTypesCollectionResult holds the outcome of cluster instance type collection.
@@ -89,20 +105,11 @@ func GenerateClusterInstanceTypes(restConfig *rest.Config, dirCfg *dirconfig.Dir
 		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, Error: fmt.Errorf("list cluster instance types: %w", err)}
 	}
 
-	entries := make([]ClusterInstanceTypeEntry, 0, len(items))
-	for _, item := range items {
-		entry, ok := clusterInstanceTypeFromUnstructured(&item)
-		if !ok {
-			continue
-		}
-		entries = append(entries, entry)
+	doc, err := buildClusterInstanceTypesDocument(ctx, restConfig, dynClient, gvr, clusterUUID, items)
+	if err != nil {
+		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, Error: err}
 	}
-
-	doc := ClusterInstanceTypesDocument{
-		ClusterUUID:   clusterUUID,
-		CollectedAt:   time.Now().UTC(),
-		InstanceTypes: entries,
-	}
+	entries := doc.InstanceTypes
 	payload, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(entries), Error: fmt.Errorf("marshal cluster instance types: %w", err)}
@@ -119,6 +126,48 @@ func GenerateClusterInstanceTypes(restConfig *rest.Config, dirCfg *dirconfig.Dir
 
 	log.Info("wrote cluster instance types", "path", outPath, "count", len(entries))
 	return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(entries), FileWritten: true}
+}
+
+func buildClusterInstanceTypesDocument(
+	ctx context.Context,
+	restConfig *rest.Config,
+	dynClient dynamic.Interface,
+	instanceTypeGVR schema.GroupVersionResource,
+	clusterUUID string,
+	instanceTypeItems []unstructured.Unstructured,
+) (ClusterInstanceTypesDocument, error) {
+	entries := make([]ClusterInstanceTypeEntry, 0, len(instanceTypeItems))
+	for _, item := range instanceTypeItems {
+		entry, ok := clusterInstanceTypeFromUnstructured(&item)
+		if !ok {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+
+	doc := ClusterInstanceTypesDocument{
+		ClusterUUID:   clusterUUID,
+		CollectedAt:   time.Now().UTC(),
+		InstanceTypes: entries,
+	}
+
+	if prefGVR, ok := preferenceGVRFunc(restConfig); ok {
+		prefItems, err := listClusterResources(ctx, dynClient, prefGVR)
+		if err != nil {
+			return ClusterInstanceTypesDocument{}, fmt.Errorf("list cluster preferences: %w", err)
+		}
+		doc.Preferences = clusterPreferencesFromItems(prefItems)
+	}
+
+	if vmResGVR, ok := vmGVRFunc(restConfig); ok {
+		vmItems, err := listClusterResources(ctx, dynClient, vmResGVR)
+		if err != nil {
+			return ClusterInstanceTypesDocument{}, fmt.Errorf("list virtual machines: %w", err)
+		}
+		doc.VMPreferences = vmPreferencesFromItems(vmItems)
+	}
+
+	return doc, nil
 }
 
 func instanceTypeGVR(config *rest.Config) (schema.GroupVersionResource, bool) {
@@ -156,6 +205,10 @@ func isInstanceTypeCRDAvailable(config *rest.Config, version string) bool {
 }
 
 func listClusterInstanceTypes(ctx context.Context, dynClient dynamic.Interface, gvr schema.GroupVersionResource) ([]unstructured.Unstructured, error) {
+	return listClusterResources(ctx, dynClient, gvr)
+}
+
+func listClusterResources(ctx context.Context, dynClient dynamic.Interface, gvr schema.GroupVersionResource) ([]unstructured.Unstructured, error) {
 	var result []unstructured.Unstructured
 	continueToken := ""
 	for {
@@ -173,6 +226,141 @@ func listClusterInstanceTypes(ctx context.Context, dynClient dynamic.Interface, 
 		}
 	}
 	return result, nil
+}
+
+func preferenceGVR(config *rest.Config) (schema.GroupVersionResource, bool) {
+	for _, version := range preferenceAPIVersions {
+		if !isInstanceTypeCRDAvailable(config, version) {
+			continue
+		}
+		if !isPreferenceCRDAvailable(config, version) {
+			continue
+		}
+		return schema.GroupVersionResource{
+			Group:    instanceTypeAPIGroup,
+			Version:  version,
+			Resource: preferenceResource,
+		}, true
+	}
+	return schema.GroupVersionResource{}, false
+}
+
+func isPreferenceCRDAvailable(config *rest.Config, version string) bool {
+	if config == nil {
+		return false
+	}
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+	if err != nil {
+		return false
+	}
+	resources, err := discoveryClient.ServerResourcesForGroupVersion(instanceTypeAPIGroup + "/" + version)
+	if err != nil {
+		return false
+	}
+	for _, r := range resources.APIResources {
+		if r.Name == preferenceResource {
+			return true
+		}
+	}
+	return false
+}
+
+func vmGVR(config *rest.Config) (schema.GroupVersionResource, bool) {
+	if config == nil {
+		return schema.GroupVersionResource{}, false
+	}
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+	if err != nil {
+		return schema.GroupVersionResource{}, false
+	}
+	resources, err := discoveryClient.ServerResourcesForGroupVersion(vmAPIGroup + "/v1")
+	if err != nil {
+		return schema.GroupVersionResource{}, false
+	}
+	for _, r := range resources.APIResources {
+		if r.Name == vmResource {
+			return schema.GroupVersionResource{
+				Group:    vmAPIGroup,
+				Version:  "v1",
+				Resource: vmResource,
+			}, true
+		}
+	}
+	return schema.GroupVersionResource{}, false
+}
+
+func clusterPreferencesFromItems(items []unstructured.Unstructured) []ClusterPreferenceEntry {
+	out := make([]ClusterPreferenceEntry, 0, len(items))
+	for i := range items {
+		entry, ok := clusterPreferenceFromUnstructured(&items[i])
+		if !ok {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func clusterPreferenceFromUnstructured(item *unstructured.Unstructured) (ClusterPreferenceEntry, bool) {
+	if item == nil {
+		return ClusterPreferenceEntry{}, false
+	}
+	name := item.GetName()
+	if name == "" {
+		return ClusterPreferenceEntry{}, false
+	}
+	class := preferenceClassFromObject(item)
+	return ClusterPreferenceEntry{Name: name, Class: class}, true
+}
+
+func preferenceClassFromObject(item *unstructured.Unstructured) string {
+	if labels := item.GetLabels(); labels != nil {
+		if class := labels[instanceTypeClassLabel]; class != "" {
+			return class
+		}
+	}
+	if annotations := item.GetAnnotations(); annotations != nil {
+		if class := annotations[instanceTypeClassLabel]; class != "" {
+			return class
+		}
+	}
+	return ""
+}
+
+func vmPreferencesFromItems(items []unstructured.Unstructured) map[string]string {
+	out := make(map[string]string)
+	for i := range items {
+		namespace := items[i].GetNamespace()
+		name := items[i].GetName()
+		if namespace == "" || name == "" {
+			continue
+		}
+		prefName := vmPreferenceNameFromUnstructured(&items[i])
+		if prefName == "" {
+			continue
+		}
+		out[namespace+"/"+name] = prefName
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func vmPreferenceNameFromUnstructured(item *unstructured.Unstructured) string {
+	if item == nil {
+		return ""
+	}
+	spec, _ := item.Object["spec"].(map[string]interface{})
+	if spec == nil {
+		return ""
+	}
+	pref, _ := spec["preference"].(map[string]interface{})
+	if pref == nil {
+		return ""
+	}
+	name, _ := pref["name"].(string)
+	return strings.TrimSpace(name)
 }
 
 func clusterInstanceTypeFromUnstructured(item *unstructured.Unstructured) (ClusterInstanceTypeEntry, bool) {

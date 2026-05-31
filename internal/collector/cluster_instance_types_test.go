@@ -247,28 +247,138 @@ func generateClusterInstanceTypesWithClient(
 		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, Error: err}
 	}
 
-	entries := make([]ClusterInstanceTypeEntry, 0, len(items))
-	for _, item := range items {
-		entry, ok := clusterInstanceTypeFromUnstructured(&item)
-		if !ok {
-			continue
-		}
-		entries = append(entries, entry)
+	doc, err := buildClusterInstanceTypesDocument(ctx, restConfig, dynClient, gvr, clusterUUID, items)
+	if err != nil {
+		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, Error: err}
 	}
 
-	doc := ClusterInstanceTypesDocument{
-		ClusterUUID:   clusterUUID,
-		CollectedAt:   time.Now().UTC(),
-		InstanceTypes: entries,
-	}
 	payload, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
-		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(entries), Error: err}
+		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(doc.InstanceTypes), Error: err}
 	}
 
 	outPath := filepath.Join(dirCfg.Reports.Path, clusterInstanceTypesFileName)
 	if err := os.WriteFile(outPath, payload, 0644); err != nil {
-		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(entries), Error: err}
+		return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(doc.InstanceTypes), Error: err}
 	}
-	return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(entries), FileWritten: true}
+	return ClusterInstanceTypesCollectionResult{CRDAvailable: true, TypeCount: len(doc.InstanceTypes), FileWritten: true}
+}
+
+func TestGenerateClusterInstanceTypes_PreferencesAndVMMappings(t *testing.T) {
+	instanceGVR := schema.GroupVersionResource{
+		Group: instanceTypeAPIGroup, Version: "v1beta1", Resource: instanceTypeResource,
+	}
+	prefGVR := schema.GroupVersionResource{
+		Group: instanceTypeAPIGroup, Version: "v1beta1", Resource: preferenceResource,
+	}
+	vmListGVR := schema.GroupVersionResource{
+		Group: vmAPIGroup, Version: "v1", Resource: vmResource,
+	}
+
+	prefObj := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "instancetype.kubevirt.io/v1beta1",
+		"kind":       "VirtualMachineClusterPreference",
+		"metadata": map[string]interface{}{
+			"name": "database",
+			"labels": map[string]interface{}{
+				instanceTypeClassLabel: "memory-intensive",
+			},
+		},
+	}}
+	vmWithPref := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "kubevirt.io/v1",
+		"kind":       "VirtualMachine",
+		"metadata": map[string]interface{}{
+			"name":      "db-server-01",
+			"namespace": "production",
+		},
+		"spec": map[string]interface{}{
+			"preference": map[string]interface{}{"name": "database"},
+		},
+	}}
+	vmWithoutPref := &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "kubevirt.io/v1",
+		"kind":       "VirtualMachine",
+		"metadata": map[string]interface{}{
+			"name":      "plain-vm",
+			"namespace": "production",
+		},
+		"spec": map[string]interface{}{},
+	}}
+
+	scheme := runtime.NewScheme()
+	listKinds := map[schema.GroupVersionResource]string{
+		instanceGVR: "VirtualMachineClusterInstancetypeList",
+		prefGVR:     "VirtualMachineClusterPreferenceList",
+		vmListGVR:   "VirtualMachineList",
+	}
+	dynClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
+		scheme, listKinds, prefObj, vmWithPref, vmWithoutPref,
+	)
+
+	kubeVirtCRDChecker = func(*rest.Config) bool { return true }
+	instanceTypeGVRFunc = func(*rest.Config) (schema.GroupVersionResource, bool) {
+		return instanceGVR, true
+	}
+	preferenceGVRFunc = func(*rest.Config) (schema.GroupVersionResource, bool) {
+		return prefGVR, true
+	}
+	vmGVRFunc = func(*rest.Config) (schema.GroupVersionResource, bool) {
+		return vmListGVR, true
+	}
+	defer func() {
+		kubeVirtCRDChecker = IsKubeVirtCRDAvailable
+		instanceTypeGVRFunc = instanceTypeGVR
+		preferenceGVRFunc = preferenceGVR
+		vmGVRFunc = vmGVR
+	}()
+
+	dir := t.TempDir()
+	dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: dir}}
+
+	result := generateClusterInstanceTypesWithClient(&rest.Config{}, dirCfg, "abc-123", dynClient)
+	if result.Error != nil {
+		t.Fatalf("unexpected error: %v", result.Error)
+	}
+	if !result.FileWritten {
+		t.Fatal("expected file written")
+	}
+
+	doc, err := ParseClusterInstanceTypesFile(filepath.Join(dir, clusterInstanceTypesFileName))
+	if err != nil {
+		t.Fatalf("parse written file: %v", err)
+	}
+	if len(doc.Preferences) != 1 {
+		t.Fatalf("len(preferences) = %d, want 1", len(doc.Preferences))
+	}
+	if doc.Preferences[0].Name != "database" || doc.Preferences[0].Class != "memory-intensive" {
+		t.Errorf("unexpected preference: %+v", doc.Preferences[0])
+	}
+	if len(doc.VMPreferences) != 1 {
+		t.Fatalf("len(vm_preferences) = %d, want 1", len(doc.VMPreferences))
+	}
+	if doc.VMPreferences["production/db-server-01"] != "database" {
+		t.Errorf("vm_preferences = %#v", doc.VMPreferences)
+	}
+	if _, ok := doc.VMPreferences["production/plain-vm"]; ok {
+		t.Error("VM without preference should not appear in vm_preferences")
+	}
+}
+
+func TestClusterPreferenceFromUnstructured_ClassFromAnnotation(t *testing.T) {
+	item := &unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"name": "highperformance",
+			"annotations": map[string]interface{}{
+				instanceTypeClassLabel: "compute-intensive",
+			},
+		},
+	}}
+	entry, ok := clusterPreferenceFromUnstructured(item)
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if entry.Class != "compute-intensive" {
+		t.Errorf("class = %q, want compute-intensive", entry.Class)
+	}
 }

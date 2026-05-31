@@ -53,6 +53,14 @@ rules:
   - instancetype.kubevirt.io
   resources:
   - virtualmachineclusterinstancetypes
+  - virtualmachineclusterpreferences
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachines
   verbs:
   - get
   - list
