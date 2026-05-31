@@ -102,8 +102,8 @@ func TestROSVMRowCSVFormat(t *testing.T) {
 	}
 
 	header := rosVMRow{}.csvHeader()
-	if len(header) != 20 {
-		t.Fatalf("expected 20 columns, got %d", len(header))
+	if len(header) != 31 {
+		t.Fatalf("expected 31 columns, got %d", len(header))
 	}
 
 	csv := row.csvRow()
@@ -218,6 +218,7 @@ func TestCollectVMQuarterHour_EmptyPrometheusResults(t *testing.T) {
 	for _, q := range *rosVMQueries {
 		mockResults[q.QueryString] = &mockPromResult{value: model.Vector{}}
 	}
+	addVMGpuMockResults(mockResults)
 
 	collector := &PrometheusCollector{
 		PromConn:       mockPrometheusConnection{mappedResults: &mockResults, t: t},
@@ -415,7 +416,14 @@ func buildVMRosMockPromResults(t *testing.T) mappedMockPromResult {
 			value: model.Vector{{Metric: labels, Value: model.SampleValue(val), Timestamp: ts}},
 		}
 	}
+	addVMGpuMockResults(m)
 	return m
+}
+
+func addVMGpuMockResults(m mappedMockPromResult) {
+	for _, q := range *rosVMGpuQueries {
+		m[q.QueryString] = &mockPromResult{value: model.Vector{}}
+	}
 }
 
 func quarterHourRangeFromFake() *promv1.Range {
