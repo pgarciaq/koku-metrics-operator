@@ -8,6 +8,9 @@ package collector
 import "github.com/prometheus/common/model"
 
 // rosVMQueries collects OpenShift Virtualization metrics at 15-minute resolution for ROS.
+// There are 14 sequential Prometheus queries per 15-minute window. If any query still fails
+// after getQueryResults retries, the entire window is discarded and retried on the next
+// reconcile (see docs/design/partial-prometheus-failure-handling.md).
 var rosVMQueries = &querys{
 	query{
 		Name:        "vm-ros-cpu-usage-mc",
