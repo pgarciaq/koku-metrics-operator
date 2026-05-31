@@ -8,7 +8,7 @@ package collector
 import "github.com/prometheus/common/model"
 
 // rosVMQueries collects OpenShift Virtualization metrics at 15-minute resolution for ROS.
-// There are 14 sequential Prometheus queries per 15-minute window. If any query still fails
+// There are 15 sequential Prometheus queries per 15-minute window. If any query still fails
 // after getQueryResults retries, the entire window is discarded and retried on the next
 // reconcile (see docs/design/partial-prometheus-failure-handling.md).
 var rosVMQueries = &querys{
@@ -165,5 +165,16 @@ var rosVMQueries = &querys{
 			"guest_os":  "os",
 		},
 		RowKey: []model.LabelName{"name", "namespace", "node"},
+	},
+	query{
+		Name:        "vm-ros-restart-count",
+		QueryString: QueryMap["ros:vm_restart_count"],
+		MetricKey: staticFields{
+			"name":      "name",
+			"namespace": "namespace",
+			"node":      "node",
+		},
+		QueryValue: &saveQueryValue{ValName: "restart_count"},
+		RowKey:     []model.LabelName{"name", "namespace", "node"},
 	},
 }
