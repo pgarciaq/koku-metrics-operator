@@ -166,6 +166,9 @@ var rosVMQueries = &querys{
 		},
 		RowKey: []model.LabelName{"name", "namespace", "node"},
 	},
+	// vm-ros-restart-count (query 15 of 15): counts Running phase transitions per 15-minute
+	// window from kubevirt_vmi_phase_transition_time_seconds. Written to restart_count in
+	// ros-openshift-vm-usage CSV; ROS sums daily restart_count_sum for crash-loop notification 48.
 	query{
 		Name:        "vm-ros-restart-count",
 		QueryString: QueryMap["ros:vm_restart_count"],
