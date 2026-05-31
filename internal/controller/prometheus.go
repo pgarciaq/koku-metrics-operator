@@ -226,3 +226,20 @@ func collectSnapshotInventory(r *MetricsConfigReconciler, cr *metricscfgv1beta1.
 		}
 	}
 }
+
+// collectClusterInstanceTypes collects VirtualMachineClusterInstancetype metadata once per
+// upload cycle for ROS VM instance type matching.
+func collectClusterInstanceTypes(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.DirectoryConfig) {
+	log := log.WithName("collectClusterInstanceTypes")
+	if dirCfg == nil {
+		return
+	}
+	result := collector.GenerateClusterInstanceTypesInventory(r.restConfig, dirCfg, cr.Status.ClusterID)
+	if result.Error != nil {
+		log.Error(result.Error, "failed to collect cluster instance types (non-fatal)")
+		return
+	}
+	if result.FileWritten {
+		log.Info("cluster instance types collected", "count", result.TypeCount)
+	}
+}

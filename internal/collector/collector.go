@@ -302,6 +302,12 @@ func GenerateSnapshotInventory(restConfig *rest.Config, dirCfg *dirconfig.Direct
 	return GenerateSnapshotReport(cfg, dirCfg, yearMonth)
 }
 
+// GenerateClusterInstanceTypesInventory collects VirtualMachineClusterInstancetype metadata
+// for ROS VM recommendation matching. It queries the Kubernetes API rather than Prometheus.
+func GenerateClusterInstanceTypesInventory(restConfig *rest.Config, dirCfg *dirconfig.DirectoryConfig, clusterUUID string) ClusterInstanceTypesCollectionResult {
+	return GenerateClusterInstanceTypes(restConfig, dirCfg, clusterUUID)
+}
+
 func generateCostManagementReports(
 	log gologr.Logger,
 	c *PrometheusCollector,
