@@ -802,6 +802,7 @@ type rosVMRow struct {
 	DiskWriteIOPS           string `mapstructure:"disk_write_iops"`
 	DiskReadBytesPerSec     string `mapstructure:"disk_read_bytes_per_sec"`
 	DiskWriteBytesPerSec    string `mapstructure:"disk_write_bytes_per_sec"`
+	RestartCount            string `mapstructure:"restart_count"`
 }
 
 func (rosVMRow) csvHeader() []string {
@@ -825,6 +826,7 @@ func (rosVMRow) csvHeader() []string {
 		"disk_write_iops",
 		"disk_read_bytes_per_sec",
 		"disk_write_bytes_per_sec",
+		"restart_count",
 	}
 }
 
@@ -849,6 +851,7 @@ func (row rosVMRow) csvRow() []string {
 		row.DiskWriteIOPS,
 		row.DiskReadBytesPerSec,
 		row.DiskWriteBytesPerSec,
+		row.RestartCount,
 	}
 }
 

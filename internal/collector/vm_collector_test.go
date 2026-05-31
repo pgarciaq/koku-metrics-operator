@@ -43,6 +43,7 @@ func TestRosVMQueriesMetricFieldNames(t *testing.T) {
 		"vm-ros-disk-write-iops":           "disk_write_iops",
 		"vm-ros-disk-read-bytes-per-sec":   "disk_read_bytes_per_sec",
 		"vm-ros-disk-write-bytes-per-sec":  "disk_write_bytes_per_sec",
+		"vm-ros-restart-count":             "restart_count",
 	}
 	for _, q := range *rosVMQueries {
 		if q.Name == "vm-ros-info" {
@@ -101,8 +102,8 @@ func TestROSVMRowCSVFormat(t *testing.T) {
 	}
 
 	header := rosVMRow{}.csvHeader()
-	if len(header) != 19 {
-		t.Fatalf("expected 19 columns, got %d", len(header))
+	if len(header) != 20 {
+		t.Fatalf("expected 20 columns, got %d", len(header))
 	}
 
 	csv := row.csvRow()

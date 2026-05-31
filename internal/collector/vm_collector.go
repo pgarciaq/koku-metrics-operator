@@ -188,6 +188,7 @@ func averageVMSamples(samples []mappedValues) mappedValues {
 		"memory_usage_kib", "memory_request_kib", "memory_available_kib", "memory_limit_kib",
 		"disk_allocated_bytes", "filesystem_used_bytes", "filesystem_capacity_bytes",
 		"disk_read_iops", "disk_write_iops", "disk_read_bytes_per_sec", "disk_write_bytes_per_sec",
+		"restart_count",
 	}
 
 	for key, val := range samples[0] {
