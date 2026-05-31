@@ -365,6 +365,108 @@ func TestGenerateClusterInstanceTypes_PreferencesAndVMMappings(t *testing.T) {
 	}
 }
 
+func TestGenerateClusterInstanceTypes_InstanceTypeCRDNotAvailable(t *testing.T) {
+	kubeVirtCRDChecker = func(*rest.Config) bool { return true }
+	instanceTypeGVRFunc = func(*rest.Config) (schema.GroupVersionResource, bool) {
+		return schema.GroupVersionResource{}, false
+	}
+	defer func() {
+		kubeVirtCRDChecker = IsKubeVirtCRDAvailable
+		instanceTypeGVRFunc = instanceTypeGVR
+	}()
+
+	dir := t.TempDir()
+	dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: dir}}
+	result := GenerateClusterInstanceTypes(&rest.Config{}, dirCfg, "cluster-1")
+	if result.FileWritten {
+		t.Error("expected no file when instance type CRD is unavailable")
+	}
+	if result.CRDAvailable {
+		t.Error("expected CRDAvailable=false when instance type GVR is missing")
+	}
+}
+
+func TestClusterInstanceTypeFromUnstructured_Defaults(t *testing.T) {
+	item := &unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{"name": "minimal"},
+	}}
+	entry, ok := clusterInstanceTypeFromUnstructured(item)
+	if !ok {
+		t.Fatal("expected ok for minimal spec")
+	}
+	if entry.VCPU != 1 || entry.MemoryGiB != 1 {
+		t.Errorf("expected minimum vcpu/memory of 1, got vcpu=%d mem=%d", entry.VCPU, entry.MemoryGiB)
+	}
+	if entry.GPUs != 0 {
+		t.Errorf("GPUs = %d, want 0", entry.GPUs)
+	}
+}
+
+func TestClusterInstanceTypeFromUnstructured_Invalid(t *testing.T) {
+	if _, ok := clusterInstanceTypeFromUnstructured(nil); ok {
+		t.Error("nil item should not parse")
+	}
+	if _, ok := clusterInstanceTypeFromUnstructured(&unstructured.Unstructured{}); ok {
+		t.Error("empty metadata should not parse")
+	}
+}
+
+func TestVmPreferencesFromItems_EmptyReturnsNil(t *testing.T) {
+	if got := vmPreferencesFromItems(nil); got != nil {
+		t.Errorf("nil items should return nil map, got %#v", got)
+	}
+	vmNoPref := &unstructured.Unstructured{Object: map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"name": "vm1", "namespace": "ns1",
+		},
+		"spec": map[string]interface{}{},
+	}}
+	if got := vmPreferencesFromItems([]unstructured.Unstructured{*vmNoPref}); got != nil {
+		t.Errorf("VMs without preference should yield nil map, got %#v", got)
+	}
+}
+
+func TestClusterInstanceTypesDocument_AllSections(t *testing.T) {
+	doc := ClusterInstanceTypesDocument{
+		ClusterUUID: "cluster-uuid",
+		CollectedAt: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC),
+		InstanceTypes: []ClusterInstanceTypeEntry{
+			{Name: "u1.large", Series: "general", VCPU: 2, MemoryGiB: 8, GPUs: 0},
+		},
+		Preferences: []ClusterPreferenceEntry{
+			{Name: "database", Class: "memory-intensive"},
+		},
+		VMPreferences: map[string]string{
+			"production/db-vm": "database",
+		},
+	}
+	raw, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"cluster_uuid", "collected_at", "instance_types", "preferences", "vm_preferences"} {
+		if _, ok := decoded[key]; !ok {
+			t.Errorf("JSON missing key %q", key)
+		}
+	}
+	types, ok := decoded["instance_types"].([]interface{})
+	if !ok || len(types) != 1 {
+		t.Fatalf("instance_types = %#v", decoded["instance_types"])
+	}
+	prefs, ok := decoded["preferences"].([]interface{})
+	if !ok || len(prefs) != 1 {
+		t.Fatalf("preferences = %#v", decoded["preferences"])
+	}
+	vmPrefs, ok := decoded["vm_preferences"].(map[string]interface{})
+	if !ok || vmPrefs["production/db-vm"] != "database" {
+		t.Fatalf("vm_preferences = %#v", decoded["vm_preferences"])
+	}
+}
+
 func TestClusterPreferenceFromUnstructured_ClassFromAnnotation(t *testing.T) {
 	item := &unstructured.Unstructured{Object: map[string]interface{}{
 		"metadata": map[string]interface{}{
