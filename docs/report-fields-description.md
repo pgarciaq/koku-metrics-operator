@@ -150,6 +150,9 @@ Fields for metrics related to containers:
 * `namespace`: The namespace of the container.
 * `image_name`: The name of the container's image.
 * `node`: The node on which the container is running.
+* `instance_type`: Node instance type from `kube_node_labels` (e.g. `label_node_kubernetes_io_instance_type`); used by ros-ocp-backend for Level 3 node consolidation grouping.
+* `node_allocatable_cpu_cores`: Node allocatable CPU cores from `kube_node_status_allocatable{resource='cpu'}` (preferred over capacity for utilization ratios).
+* `node_allocatable_memory_bytes`: Node allocatable memory bytes from `kube_node_status_allocatable{resource='memory'}`.
 * `resource_id`: The unique identifier of the resource.
 * `cpu_request_container_avg`: The average CPU request for the container.
 * `cpu_request_container_sum`: The total CPU request for the container.
