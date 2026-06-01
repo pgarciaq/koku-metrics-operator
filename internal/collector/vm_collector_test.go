@@ -219,6 +219,7 @@ func TestCollectVMQuarterHour_EmptyPrometheusResults(t *testing.T) {
 		mockResults[q.QueryString] = &mockPromResult{value: model.Vector{}}
 	}
 	addVMGpuMockResults(mockResults)
+	addVMPodVMIMockResults(mockResults)
 
 	collector := &PrometheusCollector{
 		PromConn:       mockPrometheusConnection{mappedResults: &mockResults, t: t},
@@ -417,11 +418,18 @@ func buildVMRosMockPromResults(t *testing.T) mappedMockPromResult {
 		}
 	}
 	addVMGpuMockResults(m)
+	addVMPodVMIMockResults(m)
 	return m
 }
 
 func addVMGpuMockResults(m mappedMockPromResult) {
 	for _, q := range *rosVMGpuQueries {
+		m[q.QueryString] = &mockPromResult{value: model.Vector{}}
+	}
+}
+
+func addVMPodVMIMockResults(m mappedMockPromResult) {
+	for _, q := range *rosVMPodVMINameQueries {
 		m[q.QueryString] = &mockPromResult{value: model.Vector{}}
 	}
 }

@@ -10,6 +10,17 @@ import (
 	"testing"
 )
 
+func TestVmiNameForGPURow_PrefersPodLabels(t *testing.T) {
+	val := mappedValues{
+		"exported_pod": "virt-launcher-my-vm-abc12",
+		"namespace":    "ml",
+	}
+	podVMI := map[string]string{"ml\x00virt-launcher-my-vm-abc12": "exact-vmi-name"}
+	if got := vmiNameForGPURow(val, podVMI); got != "exact-vmi-name" {
+		t.Fatalf("vmiNameForGPURow = %q, want exact-vmi-name", got)
+	}
+}
+
 func TestVmiNameFromVirtLauncherPod(t *testing.T) {
 	tests := []struct {
 		pod  string
@@ -65,7 +76,7 @@ func TestMergeVMGPUIntoResults(t *testing.T) {
 			"gpu_utilization_avg": "0.15",
 		},
 	}
-	mergeVMGPUIntoResults(vmResults, gpuResults)
+	mergeVMGPUIntoResults(vmResults, gpuResults, nil)
 
 	val := vmResults["k1"]
 	if stringValue(val, "gpu_count") != "2" {

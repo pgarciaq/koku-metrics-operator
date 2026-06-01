@@ -60,7 +60,10 @@ var (
 		// ROS VM crash-loop signal: phase transitions into Running per collection step (see vm-ros-restart-count).
 		"ros:vm_restart_count":           "sum by (name, namespace, node) (clamp_min(changes(kubevirt_vmi_phase_transition_time_seconds{phase='Running', name!='', namespace!=''}[STEP]) - 1, 0)) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 
-		// ROS VM GPU metrics (virt-launcher pods only; correlated to VMIs via exported_pod)
+		// Virt-launcher pod -> KubeVirt VMI name (primary GPU/VM correlation; fallback: pod name parse).
+		"ros:vm_pod_vmi_name": `max by (pod, namespace, label_vm_kubevirt_io_name) (kube_pod_labels{pod=~"virt-launcher-.*", label_vm_kubevirt_io_name!=""})`,
+
+		// ROS VM GPU metrics (virt-launcher pods only; correlated to VMIs via kube_pod_labels or pod name)
 		"ros:vm_gpu_utilization_avg":     `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{exported_pod=~"virt-launcher-.*"}[STEP]))`,
 		"ros:vm_gpu_utilization_max":     `max by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (max_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{exported_pod=~"virt-launcher-.*"}[STEP]))`,
 		"ros:vm_gpu_fb_used_avg":         `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE) (avg_over_time(DCGM_FI_DEV_FB_USED{exported_pod=~"virt-launcher-.*"}[STEP]))`,
