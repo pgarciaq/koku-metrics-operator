@@ -100,6 +100,8 @@ func (row namespaceRow) string() string { return strings.Join(row.csvRow(), ",")
 type nodeRow struct {
 	*dateTimes
 	Node                          string `mapstructure:"node"`
+	NodeAllocatableCPUCores       string `mapstructure:"node-allocatable-cpu-cores"`
+	NodeAllocatableMemoryBytes    string `mapstructure:"node-allocatable-memory-bytes"`
 	NodeCapacityCPUCores          string `mapstructure:"node-capacity-cpu-cores"`
 	ModeCapacityCPUCoreSeconds    string `mapstructure:"node-capacity-cpu-core-seconds"`
 	NodeCapacityMemoryBytes       string `mapstructure:"node-capacity-memory-bytes"`
@@ -522,6 +524,8 @@ func (rosContainerRow) csvHeader() []string {
 		"resource_id",
 		"node_capacity_cpu_cores",
 		"node_capacity_memory_bytes",
+		"node_allocatable_cpu_cores",
+		"node_allocatable_memory_bytes",
 		"instance_type",
 		"cpu_request_container_avg",
 		"cpu_request_container_sum",
@@ -586,6 +590,8 @@ func (row rosContainerRow) csvRow() []string {
 		row.ResourceID,
 		row.NodeCapacityCPUCores,
 		row.NodeCapacityMemoryBytes,
+		row.NodeAllocatableCPUCores,
+		row.NodeAllocatableMemoryBytes,
 		row.InstanceType,
 		row.CPURequestContainerAvg,
 		row.CPURequestContainerSum,
