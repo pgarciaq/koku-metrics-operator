@@ -44,6 +44,12 @@ func TestRosVMQueriesMetricFieldNames(t *testing.T) {
 		"vm-ros-disk-read-bytes-per-sec":   "disk_read_bytes_per_sec",
 		"vm-ros-disk-write-bytes-per-sec":  "disk_write_bytes_per_sec",
 		"vm-ros-restart-count":             "restart_count",
+		"vm-ros-net-rx-bytes-per-sec":     "net_rx_bytes_per_sec",
+		"vm-ros-net-tx-bytes-per-sec":     "net_tx_bytes_per_sec",
+		"vm-ros-net-rx-packets-per-sec":   "net_rx_packets_per_sec",
+		"vm-ros-net-tx-packets-per-sec":   "net_tx_packets_per_sec",
+		"vm-ros-net-rx-drops-per-sec":     "net_rx_drops_per_sec",
+		"vm-ros-net-tx-drops-per-sec":     "net_tx_drops_per_sec",
 	}
 	for _, q := range *rosVMQueries {
 		if q.Name == "vm-ros-info" {
@@ -102,8 +108,8 @@ func TestROSVMRowCSVFormat(t *testing.T) {
 	}
 
 	header := rosVMRow{}.csvHeader()
-	if len(header) != 31 {
-		t.Fatalf("expected 31 columns, got %d", len(header))
+	if len(header) != 37 {
+		t.Fatalf("expected 37 columns, got %d", len(header))
 	}
 
 	csv := row.csvRow()

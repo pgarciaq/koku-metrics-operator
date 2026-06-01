@@ -92,7 +92,7 @@ func TestMergeVMGPUIntoResults(t *testing.T) {
 
 func TestROSVMRowCSVIncludesGPUColumns(t *testing.T) {
 	header := rosVMRow{}.csvHeader()
-	if len(header) != 31 {
+	if len(header) != 37 {
 		t.Fatalf("expected 31 columns, got %d", len(header))
 	}
 	if header[20] != "gpu_count" || header[30] != "gpu_max_slices" {

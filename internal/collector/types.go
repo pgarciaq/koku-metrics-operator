@@ -814,6 +814,12 @@ type rosVMRow struct {
 	GPUDRAMActiveAvg        string `mapstructure:"gpu_dram_active_avg"`
 	GPUMIGProfile           string `mapstructure:"gpu_mig_profile"`
 	GPUMaxSlices            string `mapstructure:"gpu_max_slices"`
+	NetRxBytesPerSec        string `mapstructure:"net_rx_bytes_per_sec"`
+	NetTxBytesPerSec        string `mapstructure:"net_tx_bytes_per_sec"`
+	NetRxPacketsPerSec      string `mapstructure:"net_rx_packets_per_sec"`
+	NetTxPacketsPerSec      string `mapstructure:"net_tx_packets_per_sec"`
+	NetRxDropsPerSec        string `mapstructure:"net_rx_drops_per_sec"`
+	NetTxDropsPerSec        string `mapstructure:"net_tx_drops_per_sec"`
 }
 
 func (rosVMRow) csvHeader() []string {
@@ -849,6 +855,12 @@ func (rosVMRow) csvHeader() []string {
 		"gpu_dram_active_avg",
 		"gpu_mig_profile",
 		"gpu_max_slices",
+		"net_rx_bytes_per_sec",
+		"net_tx_bytes_per_sec",
+		"net_rx_packets_per_sec",
+		"net_tx_packets_per_sec",
+		"net_rx_drops_per_sec",
+		"net_tx_drops_per_sec",
 	}
 }
 
@@ -885,6 +897,12 @@ func (row rosVMRow) csvRow() []string {
 		row.GPUDRAMActiveAvg,
 		row.GPUMIGProfile,
 		row.GPUMaxSlices,
+		row.NetRxBytesPerSec,
+		row.NetTxBytesPerSec,
+		row.NetRxPacketsPerSec,
+		row.NetTxPacketsPerSec,
+		row.NetRxDropsPerSec,
+		row.NetTxDropsPerSec,
 	}
 }
 
