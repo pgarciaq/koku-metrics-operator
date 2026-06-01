@@ -8,7 +8,7 @@ package collector
 import "github.com/prometheus/common/model"
 
 // rosVMQueries collects OpenShift Virtualization metrics at 15-minute resolution for ROS.
-// There are 15 sequential Prometheus queries per 15-minute window. If any query still fails
+// There are 21 sequential Prometheus queries per 15-minute window. If any query still fails
 // after getQueryResults retries, the entire window is discarded and retried on the next
 // reconcile (see docs/design/partial-prometheus-failure-handling.md).
 var rosVMQueries = &querys{
@@ -178,6 +178,72 @@ var rosVMQueries = &querys{
 			"node":      "node",
 		},
 		QueryValue: &saveQueryValue{ValName: "restart_count"},
+		RowKey:     []model.LabelName{"name", "namespace", "node"},
+	},
+	query{
+		Name:        "vm-ros-net-rx-bytes-per-sec",
+		QueryString: QueryMap["ros:vm_net_rx_bytes_per_sec"],
+		MetricKey: staticFields{
+			"name":      "name",
+			"namespace": "namespace",
+			"node":      "node",
+		},
+		QueryValue: &saveQueryValue{ValName: "net_rx_bytes_per_sec"},
+		RowKey:     []model.LabelName{"name", "namespace", "node"},
+	},
+	query{
+		Name:        "vm-ros-net-tx-bytes-per-sec",
+		QueryString: QueryMap["ros:vm_net_tx_bytes_per_sec"],
+		MetricKey: staticFields{
+			"name":      "name",
+			"namespace": "namespace",
+			"node":      "node",
+		},
+		QueryValue: &saveQueryValue{ValName: "net_tx_bytes_per_sec"},
+		RowKey:     []model.LabelName{"name", "namespace", "node"},
+	},
+	query{
+		Name:        "vm-ros-net-rx-packets-per-sec",
+		QueryString: QueryMap["ros:vm_net_rx_packets_per_sec"],
+		MetricKey: staticFields{
+			"name":      "name",
+			"namespace": "namespace",
+			"node":      "node",
+		},
+		QueryValue: &saveQueryValue{ValName: "net_rx_packets_per_sec"},
+		RowKey:     []model.LabelName{"name", "namespace", "node"},
+	},
+	query{
+		Name:        "vm-ros-net-tx-packets-per-sec",
+		QueryString: QueryMap["ros:vm_net_tx_packets_per_sec"],
+		MetricKey: staticFields{
+			"name":      "name",
+			"namespace": "namespace",
+			"node":      "node",
+		},
+		QueryValue: &saveQueryValue{ValName: "net_tx_packets_per_sec"},
+		RowKey:     []model.LabelName{"name", "namespace", "node"},
+	},
+	query{
+		Name:        "vm-ros-net-rx-drops-per-sec",
+		QueryString: QueryMap["ros:vm_net_rx_drops_per_sec"],
+		MetricKey: staticFields{
+			"name":      "name",
+			"namespace": "namespace",
+			"node":      "node",
+		},
+		QueryValue: &saveQueryValue{ValName: "net_rx_drops_per_sec"},
+		RowKey:     []model.LabelName{"name", "namespace", "node"},
+	},
+	query{
+		Name:        "vm-ros-net-tx-drops-per-sec",
+		QueryString: QueryMap["ros:vm_net_tx_drops_per_sec"],
+		MetricKey: staticFields{
+			"name":      "name",
+			"namespace": "namespace",
+			"node":      "node",
+		},
+		QueryValue: &saveQueryValue{ValName: "net_tx_drops_per_sec"},
 		RowKey:     []model.LabelName{"name", "namespace", "node"},
 	},
 }

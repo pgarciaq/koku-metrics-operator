@@ -27,6 +27,12 @@ func TestRosVMQueriesDefined(t *testing.T) {
 		"ros:vm_disk_write_bytes_per_sec",
 		"ros:vm_info",
 		"ros:vm_restart_count",
+		"ros:vm_net_rx_bytes_per_sec",
+		"ros:vm_net_tx_bytes_per_sec",
+		"ros:vm_net_rx_packets_per_sec",
+		"ros:vm_net_tx_packets_per_sec",
+		"ros:vm_net_rx_drops_per_sec",
+		"ros:vm_net_tx_drops_per_sec",
 	}
 	for _, key := range expected {
 		if _, ok := QueryMap[key]; !ok {

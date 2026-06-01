@@ -59,6 +59,12 @@ var (
 		"ros:vm_info":                    "max by (name, namespace, node, os) (kubevirt_vmi_info{phase='running', name!='', namespace!=''})",
 		// ROS VM crash-loop signal: phase transitions into Running per collection step (see vm-ros-restart-count).
 		"ros:vm_restart_count":           "sum by (name, namespace, node) (clamp_min(changes(kubevirt_vmi_phase_transition_time_seconds{phase='Running', name!='', namespace!=''}[STEP]) - 1, 0)) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
+		"ros:vm_net_rx_bytes_per_sec":    "sum by (name, namespace, node) (rate(kubevirt_vmi_network_receive_bytes_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
+		"ros:vm_net_tx_bytes_per_sec":    "sum by (name, namespace, node) (rate(kubevirt_vmi_network_transmit_bytes_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
+		"ros:vm_net_rx_packets_per_sec":  "sum by (name, namespace, node) (rate(kubevirt_vmi_network_receive_packets_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
+		"ros:vm_net_tx_packets_per_sec":  "sum by (name, namespace, node) (rate(kubevirt_vmi_network_transmit_packets_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
+		"ros:vm_net_rx_drops_per_sec":    "sum by (name, namespace, node) (rate(kubevirt_vmi_network_receive_packets_dropped_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
+		"ros:vm_net_tx_drops_per_sec":    "sum by (name, namespace, node) (rate(kubevirt_vmi_network_transmit_packets_dropped_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 
 		// Virt-launcher pod -> KubeVirt VMI name (primary GPU/VM correlation; fallback: pod name parse).
 		"ros:vm_pod_vmi_name": `max by (pod, namespace, label_vm_kubevirt_io_name) (kube_pod_labels{pod=~"virt-launcher-.*", label_vm_kubevirt_io_name!=""})`,
