@@ -137,7 +137,7 @@ Queries Prometheus/Thanos for cluster metrics and generates reports.
 - **Namespace**: Resource quotas and usage
 - **Virtual Machines**: vCPU, memory for KubeVirt VMs
 - **NVIDIA GPU**: GPU usage and allocation
-- **ROS (Resource Optimization)**: Container and namespace recommendations
+- **ROS (Resource Optimization)**: Container and namespace metrics; container CSV includes `instance_type`, `node_allocatable_cpu_cores`, and `node_allocatable_memory_bytes` for node consolidation and allocatable-aware ratios in ros-ocp-backend
 
 **Query Pattern:**
 - Time ranges: UTC, truncated to hour boundaries
