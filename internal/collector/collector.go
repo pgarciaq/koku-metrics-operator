@@ -735,6 +735,12 @@ func generateROSClusterQuotaReport(log gologr.Logger, c *PrometheusCollector, di
 		}
 	}
 
+	if membership, err := c.clusterQuotaNamespaceMembershipByCRQ(ts); err != nil {
+		return err
+	} else if len(membership) > 0 {
+		applyClusterQuotaNamespaces(rosClusterQuotaRows, membership)
+	}
+
 	emptyROSClusterQuotaRow := newROSClusterQuotaRow(c.TimeSeries)
 	rosClusterQuotaReport := report{
 		file: &file{

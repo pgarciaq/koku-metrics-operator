@@ -240,8 +240,13 @@ Monthly roll-up file: **`ros-openshift-cluster-quota-YYYYMM.csv`** (15-minute in
 | `memory_request_used` | Cluster-wide memory request used (bytes), `type='used'` |
 | `memory_limit_hard` | Cluster-wide memory limit hard limit (bytes), `resource='limits.memory', type='hard'` |
 | `memory_limit_used` | Cluster-wide memory limit used (bytes), `type='used'` |
-
-**Not collected today:** CRQ namespace selector labels, per-`ResourceQuota` object name on namespace CSV, or non-compute quota resources (`requests.storage`, `pods`, `count/*`). Those require operator enhancements before ros-ocp-backend can use them.
+| `storage_request_hard` | Cluster-wide storage request hard limit (bytes), `resource='requests.storage', type='hard'` |
+| `storage_request_used` | Cluster-wide storage request used (bytes), `type='used'` |
+| `pods_hard` | Cluster-wide pod count hard limit, `resource='pods', type='hard'` |
+| `pods_used` | Cluster-wide pod count used, `type='used'` |
+| `object_count_hard` | Sum of `count/*` hard limits across object types |
+| `object_count_used` | Sum of `count/*` used values across object types |
+| `namespaces` | Comma-separated namespaces with non-zero `type=used` for this CRQ |
 
 ### 4. OpenShift Virtualization VM Metrics (ROS)
 

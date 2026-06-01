@@ -23,6 +23,13 @@ var clusterQuotaQueryMapKeys = []string{
 	"ros:cluster_quota_memory_request_used",
 	"ros:cluster_quota_memory_limit_hard",
 	"ros:cluster_quota_memory_limit_used",
+	"ros:cluster_quota_storage_request_hard",
+	"ros:cluster_quota_storage_request_used",
+	"ros:cluster_quota_pods_hard",
+	"ros:cluster_quota_pods_used",
+	"ros:cluster_quota_object_count_hard",
+	"ros:cluster_quota_object_count_used",
+	"ros:cluster_quota_namespace_members",
 }
 
 var clusterQuotaQueryNames = []string{
@@ -34,6 +41,12 @@ var clusterQuotaQueryNames = []string{
 	"cluster-quota-memory-request-used",
 	"cluster-quota-memory-limit-hard",
 	"cluster-quota-memory-limit-used",
+	"cluster-quota-storage-request-hard",
+	"cluster-quota-storage-request-used",
+	"cluster-quota-pods-hard",
+	"cluster-quota-pods-used",
+	"cluster-quota-object-count-hard",
+	"cluster-quota-object-count-used",
 }
 
 var clusterQuotaCSVColumns = []string{
@@ -46,6 +59,13 @@ var clusterQuotaCSVColumns = []string{
 	"memory_request_used",
 	"memory_limit_hard",
 	"memory_limit_used",
+	"storage_request_hard",
+	"storage_request_used",
+	"pods_hard",
+	"pods_used",
+	"object_count_hard",
+	"object_count_used",
+	"namespaces",
 }
 
 func TestQueryMap_ClusterQuotaQueries(t *testing.T) {
@@ -61,6 +81,12 @@ func TestQueryMap_ClusterQuotaQueries(t *testing.T) {
 		}
 		if !strings.Contains(q, "openshift_clusterresourcequota_usage") {
 			t.Errorf("QueryMap[%q] should query openshift_clusterresourcequota_usage, got: %s", key, q)
+		}
+		if key == "ros:cluster_quota_namespace_members" {
+			if !strings.Contains(q, "namespace") {
+				t.Errorf("QueryMap[%q] should include namespace label, got: %s", key, q)
+			}
+			continue
 		}
 		if !strings.Contains(q, "sum by (name)") {
 			t.Errorf("QueryMap[%q] should group by name, got: %s", key, q)
@@ -113,7 +139,10 @@ func addClusterQuotaMockResults(mapResults mappedMockPromResult, t *testing.T, w
 	for _, query := range *rosClusterQuotaQueries {
 		res := &model.Vector{}
 		if withData {
-			Load(filepath.Join("test_files", "test_data", query.Name), res, t)
+			dataPath := filepath.Join("test_files", "test_data", query.Name)
+			if _, err := os.Stat(dataPath); err == nil {
+				Load(dataPath, res, t)
+			}
 		}
 		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
@@ -123,6 +152,7 @@ func loadClusterQuotaMockResults(t *testing.T) mappedMockPromResult {
 	t.Helper()
 	mapResults := make(mappedMockPromResult)
 	addClusterQuotaMockResults(mapResults, t, true)
+	mapResults[QueryMap["ros:cluster_quota_namespace_members"]] = &mockPromResult{value: model.Vector{}}
 	return mapResults
 }
 
