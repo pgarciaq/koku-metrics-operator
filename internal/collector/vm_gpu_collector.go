@@ -13,7 +13,21 @@ import (
 
 var virtLauncherPodHashSuffix = regexp.MustCompile(`-[a-z0-9]{5}$`)
 
-// vmiNameFromVirtLauncherPod extracts the KubeVirt VMI name from a virt-launcher pod name.
+// vmiNameForGPURow resolves the KubeVirt VMI name for a GPU metric row.
+// Primary: kube_pod_labels label vm.kubevirt.io/name (via podVMINames map from Prometheus).
+// Fallback: parse virt-launcher-<vmi>-<hash> pod name when kube-state-metrics is unavailable.
+func vmiNameForGPURow(val mappedValues, podVMINames map[string]string) string {
+	pod := stringValue(val, "exported_pod")
+	ns := stringValue(val, "namespace")
+	if pod != "" && ns != "" && podVMINames != nil {
+		if name := podVMINames[ns+"\x00"+pod]; name != "" {
+			return name
+		}
+	}
+	return vmiNameFromVirtLauncherPod(pod)
+}
+
+// vmiNameFromVirtLauncherPod extracts the KubeVirt VMI name from a virt-launcher pod name (fallback).
 // Pod names follow virt-launcher-<vmi-name>-<5char-hash>.
 func vmiNameFromVirtLauncherPod(pod string) string {
 	pod = strings.TrimPrefix(pod, "virt-launcher-")
@@ -42,7 +56,7 @@ type vmGPUAggregate struct {
 	maxSlices       float64
 }
 
-func mergeVMGPUIntoResults(vmResults mappedResults, gpuResults mappedResults) {
+func mergeVMGPUIntoResults(vmResults mappedResults, gpuResults mappedResults, podVMINames map[string]string) {
 	if len(gpuResults) == 0 {
 		return
 	}
@@ -55,7 +69,7 @@ func mergeVMGPUIntoResults(vmResults mappedResults, gpuResults mappedResults) {
 			continue
 		}
 		ns := stringValue(val, "namespace")
-		vmiName := vmiNameFromVirtLauncherPod(pod)
+		vmiName := vmiNameForGPURow(val, podVMINames)
 		if vmiName == "" || ns == "" {
 			continue
 		}

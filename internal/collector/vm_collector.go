@@ -62,7 +62,8 @@ func collectVMQuarterHour(
 	if err := c.getQueryResults(c.TimeSeries.End, rosVMGpuQueries, &gpuResults, MaxRetries); err != nil {
 		return err
 	}
-	mergeVMGPUIntoResults(vmResults, gpuResults)
+	podVMINames, _ := fetchPodVMINameMap(c, c.TimeSeries.End)
+	mergeVMGPUIntoResults(vmResults, gpuResults, podVMINames)
 
 	if len(vmResults) == 0 {
 		log.Info("no running VM metrics returned for interval")
@@ -95,6 +96,10 @@ func collectVMQuarterHour(
 	log.WithName("writeResults").Info("writing ROS VM results to file", "filename", rosReport.file.getName())
 	if err := rosReport.writeReport(); err != nil {
 		return fmt.Errorf("failed to write ROS VM report: %v", err)
+	}
+
+	if err := writeVMGPUDeviceReport(log, c, dirCfg, yearMonth, gpuResults, podVMINames); err != nil {
+		return err
 	}
 
 	return nil
