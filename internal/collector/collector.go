@@ -26,12 +26,12 @@ import (
 )
 
 var (
-	podFilePrefix          = "cm-openshift-pod-usage-"
-	volFilePrefix          = "cm-openshift-storage-usage-"
-	vmFilePrefix           = "cm-openshift-vm-usage-"
-	nodeFilePrefix         = "cm-openshift-node-usage-"
-	namespaceFilePrefix    = "cm-openshift-namespace-usage-"
-	nvidiaGpuFilePrefix    = "cm-openshift-nvidia-gpu-usage-"
+	podFilePrefix             = "cm-openshift-pod-usage-"
+	volFilePrefix             = "cm-openshift-storage-usage-"
+	vmFilePrefix              = "cm-openshift-vm-usage-"
+	nodeFilePrefix            = "cm-openshift-node-usage-"
+	namespaceFilePrefix       = "cm-openshift-namespace-usage-"
+	nvidiaGpuFilePrefix       = "cm-openshift-nvidia-gpu-usage-"
 	rosContainerFilePrefix    = "ros-openshift-container-"
 	rosNamespaceFilePrefix    = "ros-openshift-namespace-"
 	rosClusterQuotaFilePrefix = "ros-openshift-cluster-quota-"
@@ -224,6 +224,9 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		usage := newNodeRow(c.TimeSeries)
 		if err := getStruct(val, &usage, nodeRows, node); err != nil {
 			return err
+		}
+		if nr, ok := nodeRows[node].(*nodeRow); ok {
+			nr.InstanceType = instanceTypeFromNodeLabels(nr.NodeLabels)
 		}
 	}
 
@@ -766,6 +769,27 @@ func areNamespacesEnabled(c *PrometheusCollector, ts time.Time) (bool, error) {
 		}
 	}
 	return len(namespaces) > 0, nil
+}
+
+// instanceTypeFromNodeLabels extracts the cloud instance type from the pipe-delimited
+// node_labels string produced by kube_node_labels. Returns empty when the label is absent
+// (e.g. bare-metal nodes without node.kubernetes.io/instance-type).
+func instanceTypeFromNodeLabels(nodeLabels string) string {
+	if nodeLabels == "" {
+		return ""
+	}
+	prefixes := []string{
+		"label_node_kubernetes_io_instance_type:",
+		"label_beta_kubernetes_io_instance_type:",
+	}
+	for _, part := range strings.Split(nodeLabels, "|") {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(part, prefix) {
+				return strings.TrimPrefix(part, prefix)
+			}
+		}
+	}
+	return ""
 }
 
 func findFields(input model.Metric, str string) string {
