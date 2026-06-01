@@ -200,16 +200,20 @@ Fields for metrics related to containers:
 Fields for metrics related to namespaces:
 
 * `namespace`: The name of the namespace.
-* `cpu_request_namespace_sum`: The total CPU cores requested by all containers in the namespace, derived from resource quotas.
-* `cpu_limit_namespace_sum`: The total CPU core limits configured for all containers in the namespace, derived from resource quotas.
+* `cpu_request_namespace_sum`: The total CPU request hard limit (millicores) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='requests.cpu', type='hard'}`.
+* `cpu_request_namespace_used`: The total CPU request **used** (millicores) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='requests.cpu', type='used'}`. Emitted when the operator collects ROS namespace quota metrics; may be empty on older operator builds.
+* `cpu_limit_namespace_sum`: The total CPU limit hard limit (millicores) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='limits.cpu', type='hard'}`.
+* `cpu_limit_namespace_used`: The total CPU limit **used** (millicores) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='limits.cpu', type='used'}`.
 * `cpu_usage_namespace_avg`: The average CPU usage rate across all containers in the namespace over a 15 minute window.
 * `cpu_usage_namespace_max`: The maximum CPU usage rate observed across all containers in the namespace over a 15 minute window.
 * `cpu_usage_namespace_min`: The minimum CPU usage rate observed across all containers in the namespace over a 15 minute window.
 * `cpu_throttle_namespace_avg`: The average CPU throttling rate for all containers in the namespace over a 15 minute window, indicating how often containers hit their CPU limits.
 * `cpu_throttle_namespace_max`: The maximum CPU throttling rate observed for all containers in the namespace over a 15 minute window.
 * `cpu_throttle_namespace_min`: The minimum CPU throttling rate observed for all containers in the namespace over a 15 minute window.
-* `memory_request_namespace_sum`: The total memory requested by all containers in the namespace, derived from resource quotas.
-* `memory_limit_namespace_sum`: The total memory limits configured for all containers in the namespace, derived from resource quotas.
+* `memory_request_namespace_sum`: The total memory request hard limit (bytes) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='requests.memory', type='hard'}`.
+* `memory_request_namespace_used`: The total memory request **used** (bytes) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='requests.memory', type='used'}`.
+* `memory_limit_namespace_sum`: The total memory limit hard limit (bytes) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='limits.memory', type='hard'}`.
+* `memory_limit_namespace_used`: The total memory limit **used** (bytes) summed across all `ResourceQuota` objects in the namespace, from `kube_resourcequota{resource='limits.memory', type='used'}`.
 * `memory_usage_namespace_avg`: The average working set memory usage across all containers in the namespace over a 15 minute window.
 * `memory_usage_namespace_max`: The maximum working set memory usage observed across all containers in the namespace over a 15 minute window.
 * `memory_usage_namespace_min`: The minimum working set memory usage observed across all containers in the namespace over a 15 minute window.
@@ -221,7 +225,25 @@ Fields for metrics related to namespaces:
 * `namespace_total_pods_max`: The maximum total number of pods (all phases) observed in the namespace over a 15 minute window.
 * `namespace_total_pods_avg`: The average total number of pods (all phases) in the namespace over a 15 minute window.
 
-### 3. OpenShift Virtualization VM Metrics (ROS)
+### 3. ClusterResourceQuota Metrics (ROS)
+
+Monthly roll-up file: **`ros-openshift-cluster-quota-YYYYMM.csv`** (15-minute interval rows during collection). Collected from `openshift_clusterresourcequota_usage` via [`rosClusterQuotaQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/queries.go). One row per ClusterResourceQuota name per interval.
+
+| Field | Description |
+|-------|-------------|
+| `cluster_quota_name` | OpenShift `ClusterResourceQuota` object name (Prometheus label `name`) |
+| `cpu_request_hard` | Cluster-wide CPU request hard limit (millicores), `resource='requests.cpu', type='hard'` |
+| `cpu_request_used` | Cluster-wide CPU request used (millicores), `type='used'` |
+| `cpu_limit_hard` | Cluster-wide CPU limit hard limit (millicores), `resource='limits.cpu', type='hard'` |
+| `cpu_limit_used` | Cluster-wide CPU limit used (millicores), `type='used'` |
+| `memory_request_hard` | Cluster-wide memory request hard limit (bytes), `resource='requests.memory', type='hard'` |
+| `memory_request_used` | Cluster-wide memory request used (bytes), `type='used'` |
+| `memory_limit_hard` | Cluster-wide memory limit hard limit (bytes), `resource='limits.memory', type='hard'` |
+| `memory_limit_used` | Cluster-wide memory limit used (bytes), `type='used'` |
+
+**Not collected today:** CRQ namespace selector labels, per-`ResourceQuota` object name on namespace CSV, or non-compute quota resources (`requests.storage`, `pods`, `count/*`). Those require operator enhancements before ros-ocp-backend can use them.
+
+### 4. OpenShift Virtualization VM Metrics (ROS)
 
 15-minute **`ros-openshift-vm-usage-*.csv`** for VM recommendations (ros-ocp-backend). Collected by
 [`rosVMQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/vm_ros_queries.go)
