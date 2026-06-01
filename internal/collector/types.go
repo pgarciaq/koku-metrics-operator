@@ -741,15 +741,22 @@ func (row rosNamespaceRow) string() string { return strings.Join(row.csvRow(), "
 
 type rosClusterQuotaRow struct {
 	*dateTimes
-	ClusterQuotaName  string `mapstructure:"cluster_quota_name"`
-	CPURequestHard    string `mapstructure:"cpu-request-hard"`
-	CPURequestUsed    string `mapstructure:"cpu-request-used"`
-	CPULimitHard      string `mapstructure:"cpu-limit-hard"`
-	CPULimitUsed      string `mapstructure:"cpu-limit-used"`
-	MemoryRequestHard string `mapstructure:"memory-request-hard"`
-	MemoryRequestUsed string `mapstructure:"memory-request-used"`
-	MemoryLimitHard   string `mapstructure:"memory-limit-hard"`
-	MemoryLimitUsed   string `mapstructure:"memory-limit-used"`
+	ClusterQuotaName   string `mapstructure:"cluster_quota_name"`
+	CPURequestHard     string `mapstructure:"cpu-request-hard"`
+	CPURequestUsed     string `mapstructure:"cpu-request-used"`
+	CPULimitHard       string `mapstructure:"cpu-limit-hard"`
+	CPULimitUsed       string `mapstructure:"cpu-limit-used"`
+	MemoryRequestHard  string `mapstructure:"memory-request-hard"`
+	MemoryRequestUsed  string `mapstructure:"memory-request-used"`
+	MemoryLimitHard    string `mapstructure:"memory-limit-hard"`
+	MemoryLimitUsed    string `mapstructure:"memory-limit-used"`
+	StorageRequestHard string `mapstructure:"storage-request-hard"`
+	StorageRequestUsed string `mapstructure:"storage-request-used"`
+	PodsHard           string `mapstructure:"pods-hard"`
+	PodsUsed           string `mapstructure:"pods-used"`
+	ObjectCountHard    string `mapstructure:"object-count-hard"`
+	ObjectCountUsed    string `mapstructure:"object-count-used"`
+	Namespaces         string
 }
 
 func (rosClusterQuotaRow) csvHeader() []string {
@@ -767,6 +774,13 @@ func (rosClusterQuotaRow) csvHeader() []string {
 		"memory_request_used",
 		"memory_limit_hard",
 		"memory_limit_used",
+		"storage_request_hard",
+		"storage_request_used",
+		"pods_hard",
+		"pods_used",
+		"object_count_hard",
+		"object_count_used",
+		"namespaces",
 	}
 }
 
@@ -785,6 +799,13 @@ func (row rosClusterQuotaRow) csvRow() []string {
 		row.MemoryRequestUsed,
 		row.MemoryLimitHard,
 		row.MemoryLimitUsed,
+		row.StorageRequestHard,
+		row.StorageRequestUsed,
+		row.PodsHard,
+		row.PodsUsed,
+		row.ObjectCountHard,
+		row.ObjectCountUsed,
+		row.Namespaces,
 	}
 }
 
