@@ -107,6 +107,7 @@ type nodeRow struct {
 	NodeRole                      string `mapstructure:"node-role"`
 	ResourceID                    string `mapstructure:"resource_id"`
 	NodeLabels                    string `mapstructure:"node_labels"`
+	InstanceType                  string `mapstructure:"instance_type"`
 }
 
 func (nodeRow) csvHeader() []string {
@@ -521,6 +522,7 @@ func (rosContainerRow) csvHeader() []string {
 		"resource_id",
 		"node_capacity_cpu_cores",
 		"node_capacity_memory_bytes",
+		"instance_type",
 		"cpu_request_container_avg",
 		"cpu_request_container_sum",
 		"cpu_limit_container_avg",
@@ -584,6 +586,7 @@ func (row rosContainerRow) csvRow() []string {
 		row.ResourceID,
 		row.NodeCapacityCPUCores,
 		row.NodeCapacityMemoryBytes,
+		row.InstanceType,
 		row.CPURequestContainerAvg,
 		row.CPURequestContainerSum,
 		row.CPULimitContainerAvg,

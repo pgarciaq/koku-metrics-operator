@@ -181,3 +181,49 @@ func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 		t.Errorf("csvRow node_capacity_memory_bytes = %q, want %q", csvRow[memCapIdx], "33554432000.000000")
 	}
 }
+
+func TestRosContainerRow_InstanceTypeColumn(t *testing.T) {
+	row := rosContainerRow{
+		dateTimes: &dateTimes{
+			ReportPeriodStart: "2026-03-01",
+			ReportPeriodEnd:   "2026-04-01",
+			IntervalStart:     "2026-03-15 10:00:00",
+			IntervalEnd:       "2026-03-15 10:15:00",
+		},
+		nodeRow: nodeRow{
+			NodeCapacityCPUCores:    "8.000000",
+			NodeCapacityMemoryBytes: "33554432000.000000",
+			InstanceType:            "m5.2xlarge",
+		},
+	}
+
+	csvRow := row.csvRow()
+	header := row.csvHeader()
+
+	if len(header) != len(csvRow) {
+		t.Fatalf("csvRow length %d != csvHeader length %d", len(csvRow), len(header))
+	}
+
+	instanceTypeIdx := -1
+	memCapIdx := -1
+	for i, col := range header {
+		switch col {
+		case "instance_type":
+			instanceTypeIdx = i
+		case "node_capacity_memory_bytes":
+			memCapIdx = i
+		}
+	}
+	if instanceTypeIdx < 0 {
+		t.Fatal("instance_type must be in csvHeader()")
+	}
+	if memCapIdx < 0 {
+		t.Fatal("node_capacity_memory_bytes must be in csvHeader()")
+	}
+	if instanceTypeIdx != memCapIdx+1 {
+		t.Errorf("instance_type should follow node_capacity_memory_bytes, got indices %d and %d", instanceTypeIdx, memCapIdx)
+	}
+	if csvRow[instanceTypeIdx] != "m5.2xlarge" {
+		t.Errorf("csvRow instance_type = %q, want %q", csvRow[instanceTypeIdx], "m5.2xlarge")
+	}
+}
