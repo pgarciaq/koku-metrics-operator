@@ -236,3 +236,30 @@ Key fields (in addition to common interval timestamps):
 * **`restart_count`**: Count of transitions into the `Running` phase during the 15-minute interval,
   derived from `kubevirt_vmi_phase_transition_time_seconds`. Summed daily by ROS for crash-loop
   detection (notification **48** when the term-window total ≥ `stability.crash_loop_restart_threshold`).
+
+#### Per-GPU device metrics (`ros-openshift-vm-gpu-device-*.csv`)
+
+Separate from the aggregate GPU columns on **`ros-openshift-vm-usage-*.csv`**, the operator can emit
+**`ros-openshift-vm-gpu-device-YYYYMMDD-YYYYMMDD-HHMMSS.csv`** (monthly roll-up files use
+`ros-openshift-vm-gpu-device-YYYYMM.csv` during collection). Collected by
+[`writeVMGPUDeviceReport`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/vm_gpu_device_collector.go)
+when DCGM exporter metrics are available on **virt-launcher** pods.
+
+| Aspect | Detail |
+|--------|--------|
+| **Purpose** | Per-GPU-device metrics for VMs — one row per GPU UUID per 15-minute interval |
+| **Relationship to VM usage CSV** | Main VM CSV has aggregate GPU summary (`gpu_count`, blended utilization); device CSV has per-UUID detail for multi-GPU analysis and notification **54** |
+| **When generated** | Only when Prometheus returns DCGM-style GPU metrics for virt-launcher pods; omitted entirely if no GPU data |
+
+**Columns (14):**
+
+* `interval_start` — Start of the 15-minute sampling window
+* `namespace` — VM namespace
+* `vm_name` — KubeVirt VM name (from pod/VMI labels, not the virt-launcher pod name)
+* `gpu_uuid` — Device UUID from DCGM
+* `gpu_model` — GPU product name
+* `utilization_avg`, `utilization_max` — GPU utilization (0–1)
+* `fb_used_avg_mib`, `fb_used_max_mib` — Frame buffer used (MiB)
+* `sm_active_avg`, `tensor_active_avg`, `dram_active_avg` — SM/tensor/DRAM activity ratios
+* `mig_profile` — MIG profile label when applicable
+* `max_slices` — Maximum MIG slices for the profile
