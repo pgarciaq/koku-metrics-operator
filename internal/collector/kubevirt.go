@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	kubevirtAPIGroup   = "kubevirt.io"
-	kubevirtAPIVersion = "v1"
+	kubevirtAPIGroup    = "kubevirt.io"
+	kubevirtAPIVersion  = "v1"
 	kubevirtVMIResource = "virtualmachineinstances"
 )
 

@@ -145,6 +145,7 @@ func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 		nodeRow: nodeRow{
 			NodeCapacityCPUCores:       "8.000000",
 			NodeCapacityMemoryBytes:    "33554432000.000000",
+			NodeCapacityPods:           "250.000000",
 			NodeAllocatableCPUCores:    "7.500000",
 			NodeAllocatableMemoryBytes: "32212254720.000000",
 		},
@@ -159,6 +160,7 @@ func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 
 	cpuCapIdx := -1
 	memCapIdx := -1
+	podsCapIdx := -1
 	cpuAllocIdx := -1
 	memAllocIdx := -1
 	for i, col := range header {
@@ -167,6 +169,8 @@ func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 			cpuCapIdx = i
 		case "node_capacity_memory_bytes":
 			memCapIdx = i
+		case "node_capacity_pods":
+			podsCapIdx = i
 		case "node_allocatable_cpu_cores":
 			cpuAllocIdx = i
 		case "node_allocatable_memory_bytes":
@@ -179,6 +183,9 @@ func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 	if memCapIdx < 0 {
 		t.Fatal("node_capacity_memory_bytes must be in csvHeader()")
 	}
+	if podsCapIdx < 0 {
+		t.Fatal("node_capacity_pods must be in csvHeader()")
+	}
 	if cpuAllocIdx < 0 {
 		t.Fatal("node_allocatable_cpu_cores must be in csvHeader()")
 	}
@@ -188,8 +195,11 @@ func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 	if memCapIdx != cpuCapIdx+1 {
 		t.Errorf("node_capacity_memory_bytes should follow node_capacity_cpu_cores")
 	}
-	if cpuAllocIdx != memCapIdx+1 {
-		t.Errorf("node_allocatable_cpu_cores should follow node_capacity_memory_bytes")
+	if podsCapIdx != memCapIdx+1 {
+		t.Errorf("node_capacity_pods should follow node_capacity_memory_bytes")
+	}
+	if cpuAllocIdx != podsCapIdx+1 {
+		t.Errorf("node_allocatable_cpu_cores should follow node_capacity_pods")
 	}
 	if memAllocIdx != cpuAllocIdx+1 {
 		t.Errorf("node_allocatable_memory_bytes should follow node_allocatable_cpu_cores")
@@ -199,6 +209,9 @@ func TestRosContainerRow_NodeCapacityColumns(t *testing.T) {
 	}
 	if csvRow[memCapIdx] != "33554432000.000000" {
 		t.Errorf("csvRow node_capacity_memory_bytes = %q, want %q", csvRow[memCapIdx], "33554432000.000000")
+	}
+	if csvRow[podsCapIdx] != "250.000000" {
+		t.Errorf("csvRow node_capacity_pods = %q, want %q", csvRow[podsCapIdx], "250.000000")
 	}
 	if csvRow[cpuAllocIdx] != "7.500000" {
 		t.Errorf("csvRow node_allocatable_cpu_cores = %q, want %q", csvRow[cpuAllocIdx], "7.500000")
@@ -250,6 +263,18 @@ func TestRosContainerRow_InstanceTypeColumn(t *testing.T) {
 	}
 	if instanceTypeIdx != memAllocIdx+1 {
 		t.Errorf("instance_type should follow node_allocatable_memory_bytes, got indices %d and %d", instanceTypeIdx, memAllocIdx)
+	}
+	machinesetIdx := -1
+	for i, col := range header {
+		if col == "machineset_name" {
+			machinesetIdx = i
+		}
+	}
+	if machinesetIdx < 0 {
+		t.Fatal("machineset_name must be in csvHeader()")
+	}
+	if machinesetIdx != instanceTypeIdx+1 {
+		t.Errorf("machineset_name should follow instance_type, got indices %d and %d", machinesetIdx, instanceTypeIdx)
 	}
 	if csvRow[instanceTypeIdx] != "m5.2xlarge" {
 		t.Errorf("csvRow instance_type = %q, want %q", csvRow[instanceTypeIdx], "m5.2xlarge")

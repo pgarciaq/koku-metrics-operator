@@ -106,10 +106,12 @@ type nodeRow struct {
 	ModeCapacityCPUCoreSeconds    string `mapstructure:"node-capacity-cpu-core-seconds"`
 	NodeCapacityMemoryBytes       string `mapstructure:"node-capacity-memory-bytes"`
 	NodeCapacityMemoryByteSeconds string `mapstructure:"node-capacity-memory-byte-seconds"`
+	NodeCapacityPods              string `mapstructure:"node-capacity-pods"`
 	NodeRole                      string `mapstructure:"node-role"`
 	ResourceID                    string `mapstructure:"resource_id"`
 	NodeLabels                    string `mapstructure:"node_labels"`
 	InstanceType                  string `mapstructure:"instance_type"`
+	MachineSetName                string `mapstructure:"machineset_name"`
 }
 
 func (nodeRow) csvHeader() []string {
@@ -524,9 +526,11 @@ func (rosContainerRow) csvHeader() []string {
 		"resource_id",
 		"node_capacity_cpu_cores",
 		"node_capacity_memory_bytes",
+		"node_capacity_pods",
 		"node_allocatable_cpu_cores",
 		"node_allocatable_memory_bytes",
 		"instance_type",
+		"machineset_name",
 		"cpu_request_container_avg",
 		"cpu_request_container_sum",
 		"cpu_limit_container_avg",
@@ -590,9 +594,11 @@ func (row rosContainerRow) csvRow() []string {
 		row.ResourceID,
 		row.NodeCapacityCPUCores,
 		row.NodeCapacityMemoryBytes,
+		row.NodeCapacityPods,
 		row.NodeAllocatableCPUCores,
 		row.NodeAllocatableMemoryBytes,
 		row.InstanceType,
+		row.MachineSetName,
 		row.CPURequestContainerAvg,
 		row.CPURequestContainerSum,
 		row.CPULimitContainerAvg,

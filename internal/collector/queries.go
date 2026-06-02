@@ -13,6 +13,7 @@ var (
 		"cost:node_allocatable_memory_bytes": "kube_node_status_allocatable{resource='memory'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
 		"cost:node_capacity_cpu_cores":       "kube_node_status_capacity{resource='cpu'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
 		"cost:node_capacity_memory_bytes":    "kube_node_status_capacity{resource='memory'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
+		"cost:node_capacity_pods":            "kube_node_status_capacity{resource='pods'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
 
 		"cost:persistentvolume_pod_info":            "kube_pod_spec_volumes_persistentvolumeclaims_info * on(persistentvolumeclaim, namespace) group_left(volumename) max by(namespace, persistentvolumeclaim, volumename) (kube_persistentvolumeclaim_info{volumename != ''})",
 		"cost:persistentvolumeclaim_capacity_bytes": "kube_persistentvolume_capacity_bytes{persistentvolume != ''}",
@@ -277,6 +278,16 @@ var (
 				ValName:         "node-capacity-memory-bytes",
 				Method:          "max",
 				TransformedName: "node-capacity-memory-byte-seconds",
+			},
+			RowKey: []model.LabelName{"node"},
+		},
+		query{
+			Name:        "node-capacity-pods",
+			QueryString: QueryMap["cost:node_capacity_pods"],
+			MetricKey:   staticFields{"node": "node", "provider_id": "provider_id"},
+			QueryValue: &saveQueryValue{
+				ValName: "node-capacity-pods",
+				Method:  "max",
 			},
 			RowKey: []model.LabelName{"node"},
 		},
