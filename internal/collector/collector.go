@@ -476,6 +476,9 @@ func generateCostStorageMetricsReport(log gologr.Logger, c *PrometheusCollector,
 		}
 	}
 
+	podVMINames := collectPodVMINamesForStorage(c, log)
+	applyVMNameToStorageRows(volRows, podVMINames)
+
 	emptyVolRow := newStorageRow(c.TimeSeries)
 	volReport := report{
 		file: &file{

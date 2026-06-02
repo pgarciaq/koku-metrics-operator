@@ -107,6 +107,7 @@ Fields for metrics related to Persistent Volumes (PVs):
 
 * `namespace`: The namespace associated with the persistent volume claim (PVC).
 * `pod`: The name of the pod associated with the persistent volume claim.
+* `vm_name`: KubeVirt VM name when `pod` is a virt-launcher pod (from `kube_pod_labels` `vm.kubevirt.io/name` or virt-launcher pod name parsing). Empty for non-VM workloads.
 * `persistentvolumeclaim`: The name of the persistent volume claim.
 * `persistentvolume`: The name of the persistent volume.
 * `storageclass`: The storage class of the persistent volume claim.
