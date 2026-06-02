@@ -228,6 +228,30 @@ Fields for metrics related to namespaces:
 * `namespace_total_pods_max`: The maximum total number of pods (all phases) observed in the namespace over a 15 minute window.
 * `namespace_total_pods_avg`: The average total number of pods (all phases) in the namespace over a 15 minute window.
 
+### 2b. Namespace ResourceQuota Metrics (ROS, per-quota)
+
+Monthly roll-up file: **`ros-openshift-namespace-usage-YYYYMM.csv`** (15-minute interval rows). Collected from `kube_resourcequota` via [`rosNamespaceQuotaQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/quota_namespace_queries.go). One row per **namespace + ResourceQuota object** (`quota_name` label) per interval.
+
+| Field | Description |
+|-------|-------------|
+| `quota_name` | Kubernetes `ResourceQuota` object name (Prometheus label `resourcequota`) |
+| `cpu_request_namespace_sum` | CPU request hard limit (millicores) for this quota object, `resource='requests.cpu', type='hard'` |
+| `cpu_request_namespace_used` | CPU request used (millicores), `type='used'` |
+| `cpu_limit_namespace_sum` | CPU limit hard limit (millicores), `resource='limits.cpu', type='hard'` |
+| `cpu_limit_namespace_used` | CPU limit used (millicores), `type='used'` |
+| `memory_request_namespace_sum` | Memory request hard limit (bytes), `resource='requests.memory', type='hard'` |
+| `memory_request_namespace_used` | Memory request used (bytes), `type='used'` |
+| `memory_limit_namespace_sum` | Memory limit hard limit (bytes), `resource='limits.memory', type='hard'` |
+| `memory_limit_namespace_used` | Memory limit used (bytes), `type='used'` |
+| `storage_request_namespace_hard` | Storage request hard limit (bytes), `resource='requests.storage', type='hard'` |
+| `storage_request_namespace_used` | Storage request used (bytes), `type='used'` |
+| `pods_namespace_hard` | Pod count hard limit, `resource='pods', type='hard'` |
+| `pods_namespace_used` | Pod count used, `type='used'` |
+| `object_count_namespace_hard` | Sum of `count/*` hard limits across object types for this quota |
+| `object_count_namespace_used` | Sum of `count/*` used values across object types for this quota |
+
+Legacy namespace-wide sums (section 2 above, without `quota_name`) may still appear on older operator builds; ros-ocp-backend prefers per-quota rows when `quota_name` is present.
+
 ### 3. ClusterResourceQuota Metrics (ROS)
 
 Monthly roll-up file: **`ros-openshift-cluster-quota-YYYYMM.csv`** (15-minute interval rows during collection). Collected from `openshift_clusterresourcequota_usage` via [`rosClusterQuotaQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/queries.go). One row per ClusterResourceQuota name per interval.
