@@ -41,21 +41,27 @@ func TestQueryMap_ResourceQuotaNamespaceUsedQueries(t *testing.T) {
 		if !strings.Contains(q, "type='used'") {
 			t.Errorf("QueryMap[%q] should filter type='used', got: %s", key, q)
 		}
+		if !strings.Contains(q, "resourcequota") {
+			t.Errorf("QueryMap[%q] should group by resourcequota, got: %s", key, q)
+		}
 	}
 }
 
 func TestRosNamespaceQueries_IncludeResourceQuotaUsed(t *testing.T) {
 	t.Parallel()
 
-	if rosNamespaceQueries == nil {
-		t.Fatal("rosNamespaceQueries is nil")
+	if rosNamespaceQuotaQueries == nil {
+		t.Fatal("rosNamespaceQuotaQueries is nil")
 	}
 
-	names := make(map[string]struct{}, len(*rosNamespaceQueries))
-	for _, q := range *rosNamespaceQueries {
+	names := make(map[string]struct{}, len(*rosNamespaceQuotaQueries))
+	for _, q := range *rosNamespaceQuotaQueries {
 		names[q.Name] = struct{}{}
 		if q.QueryString == "" {
 			t.Errorf("query %q has empty QueryString", q.Name)
+		}
+		if len(q.RowKey) != 2 {
+			t.Errorf("query %q should RowKey namespace+resourcequota, got %v", q.Name, q.RowKey)
 		}
 	}
 
@@ -64,9 +70,11 @@ func TestRosNamespaceQueries_IncludeResourceQuotaUsed(t *testing.T) {
 		"cpu-limit-namespace-used",
 		"memory-request-namespace-used",
 		"memory-limit-namespace-used",
+		"storage-request-namespace-hard",
+		"pods-namespace-hard",
 	} {
 		if _, ok := names[want]; !ok {
-			t.Errorf("rosNamespaceQueries missing query %q", want)
+			t.Errorf("rosNamespaceQuotaQueries missing query %q", want)
 		}
 	}
 }
