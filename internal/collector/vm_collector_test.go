@@ -44,12 +44,12 @@ func TestRosVMQueriesMetricFieldNames(t *testing.T) {
 		"vm-ros-disk-read-bytes-per-sec":   "disk_read_bytes_per_sec",
 		"vm-ros-disk-write-bytes-per-sec":  "disk_write_bytes_per_sec",
 		"vm-ros-restart-count":             "restart_count",
-		"vm-ros-net-rx-bytes-per-sec":     "net_rx_bytes_per_sec",
-		"vm-ros-net-tx-bytes-per-sec":     "net_tx_bytes_per_sec",
-		"vm-ros-net-rx-packets-per-sec":   "net_rx_packets_per_sec",
-		"vm-ros-net-tx-packets-per-sec":   "net_tx_packets_per_sec",
-		"vm-ros-net-rx-drops-per-sec":     "net_rx_drops_per_sec",
-		"vm-ros-net-tx-drops-per-sec":     "net_tx_drops_per_sec",
+		"vm-ros-net-rx-bytes-per-sec":      "net_rx_bytes_per_sec",
+		"vm-ros-net-tx-bytes-per-sec":      "net_tx_bytes_per_sec",
+		"vm-ros-net-rx-packets-per-sec":    "net_rx_packets_per_sec",
+		"vm-ros-net-tx-packets-per-sec":    "net_tx_packets_per_sec",
+		"vm-ros-net-rx-drops-per-sec":      "net_rx_drops_per_sec",
+		"vm-ros-net-tx-drops-per-sec":      "net_tx_drops_per_sec",
 	}
 	for _, q := range *rosVMQueries {
 		if q.Name == "vm-ros-info" {
@@ -399,17 +399,17 @@ func buildVMRosMockPromResults(t *testing.T) mappedMockPromResult {
 	sampleValues := map[string]float64{
 		"cpu_usage_mc":              100,
 		"cpu_request_mc":            2000,
-		"cpu_limit_mc":                4000,
-		"memory_usage_kib":            1024,
+		"cpu_limit_mc":              4000,
+		"memory_usage_kib":          1024,
 		"memory_request_kib":        2048,
 		"memory_available_kib":      4096,
-		"disk_allocated_bytes":        1e10,
-		"filesystem_used_bytes":       1e9,
-		"filesystem_capacity_bytes":   2e9,
-		"disk_read_iops":              1.5,
-		"disk_write_iops":             0.5,
-		"disk_read_bytes_per_sec":     1024,
-		"disk_write_bytes_per_sec":    512,
+		"disk_allocated_bytes":      1e10,
+		"filesystem_used_bytes":     1e9,
+		"filesystem_capacity_bytes": 2e9,
+		"disk_read_iops":            1.5,
+		"disk_write_iops":           0.5,
+		"disk_read_bytes_per_sec":   1024,
+		"disk_write_bytes_per_sec":  512,
 	}
 	for _, q := range *rosVMQueries {
 		if q.QueryValue == nil {

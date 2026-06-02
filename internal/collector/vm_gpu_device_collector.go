@@ -19,20 +19,20 @@ const rosVMGPUDeviceFilePrefix = "ros-openshift-vm-gpu-device-"
 
 // rosVMGPUDeviceRow is one GPU device sample for ros-ocp-backend vm_gpu_device_digests.
 type rosVMGPUDeviceRow struct {
-	IntervalStart       string `mapstructure:"interval_start"`
-	Namespace           string `mapstructure:"namespace"`
-	VMName              string `mapstructure:"name"`
-	GPUUUID             string `mapstructure:"gpu_uuid"`
-	GPUModel            string `mapstructure:"gpu_model"`
-	UtilizationAvg      string `mapstructure:"gpu_utilization_avg"`
-	UtilizationMax      string `mapstructure:"gpu_utilization_max"`
-	FBUsedAvgMiB        string `mapstructure:"gpu_fb_used_avg_mib"`
-	FBUsedMaxMiB        string `mapstructure:"gpu_fb_used_max_mib"`
-	SMActiveAvg         string `mapstructure:"gpu_sm_active_avg"`
-	TensorActiveAvg     string `mapstructure:"gpu_tensor_active_avg"`
-	DRAMActiveAvg       string `mapstructure:"gpu_dram_active_avg"`
-	MIGProfile          string `mapstructure:"gpu_mig_profile"`
-	MaxSlices           string `mapstructure:"gpu_max_slices"`
+	IntervalStart   string `mapstructure:"interval_start"`
+	Namespace       string `mapstructure:"namespace"`
+	VMName          string `mapstructure:"name"`
+	GPUUUID         string `mapstructure:"gpu_uuid"`
+	GPUModel        string `mapstructure:"gpu_model"`
+	UtilizationAvg  string `mapstructure:"gpu_utilization_avg"`
+	UtilizationMax  string `mapstructure:"gpu_utilization_max"`
+	FBUsedAvgMiB    string `mapstructure:"gpu_fb_used_avg_mib"`
+	FBUsedMaxMiB    string `mapstructure:"gpu_fb_used_max_mib"`
+	SMActiveAvg     string `mapstructure:"gpu_sm_active_avg"`
+	TensorActiveAvg string `mapstructure:"gpu_tensor_active_avg"`
+	DRAMActiveAvg   string `mapstructure:"gpu_dram_active_avg"`
+	MIGProfile      string `mapstructure:"gpu_mig_profile"`
+	MaxSlices       string `mapstructure:"gpu_max_slices"`
 }
 
 func (rosVMGPUDeviceRow) csvHeader() []string {

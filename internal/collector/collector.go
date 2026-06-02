@@ -229,6 +229,7 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 			nr.InstanceType = instanceTypeFromNodeLabels(nr.NodeLabels)
 		}
 	}
+	applyMachineSetNamesToNodeRows(nodeRows, collectNodeMachineSetNamesForCollector(c, log))
 
 	costEnabled := cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement != nil &&
 		!*cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement
