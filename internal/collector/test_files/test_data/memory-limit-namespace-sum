@@ -1,7 +1,8 @@
 [
 	{
 		"metric": {
-			"namespace": "costmanagement-metrics-operator"
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources"
 		},
 		"value": [
 			1677009600,
@@ -10,7 +11,8 @@
 	},
 	{
 		"metric": {
-			"namespace": "koku-metrics-operator"
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources"
 		},
 		"value": [
 			1677009600,

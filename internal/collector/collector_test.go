@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -96,11 +97,39 @@ func getFiles(dir string, t *testing.T) map[string]*os.File {
 	return fileMap
 }
 
+func readCSVHeader(f *os.File) (string, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return "", err
+		}
+		return "", fmt.Errorf("empty file %s", f.Name())
+	}
+	return scanner.Text(), scanner.Err()
+}
+
 func compareFiles(expected, generated *os.File) error {
+	expectedHeader, err := readCSVHeader(expected)
+	if err != nil {
+		return fmt.Errorf("failed to read expected header: %v", err)
+	}
+	generatedHeader, err := readCSVHeader(generated)
+	if err != nil {
+		return fmt.Errorf("failed to read generated header: %v", err)
+	}
+	if expectedHeader != generatedHeader {
+		return fmt.Errorf("CSV headers differ:\n\texpected:  %s\n\tgenerated: %s", expectedHeader, generatedHeader)
+	}
+
 	files := map[string]*os.File{"e": expected, "g": generated}
 	sets := map[string]*strset.Set{"e": strset.NewSet(), "g": strset.NewSet()}
 	for i, file := range files {
-		var err error
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("failed to seek %s: %v", file.Name(), err)
+		}
 		_, err = readCSV(file, sets[i], "")
 		if err != nil {
 			return fmt.Errorf("failed to readCSV %s: %v", file.Name(), err)
@@ -159,6 +188,9 @@ func TestGenerateReports(t *testing.T) {
 		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
 	addClusterQuotaMockResults(mapResults, t, false)
+	addNamespaceQuotaMockResults(mapResults, t, true)
+	addVMPodVMIMockResults(mapResults)
+	addVMGpuMockResults(mapResults)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -221,6 +253,9 @@ func TestGenerateReportsNoROS(t *testing.T) {
 		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
 	addClusterQuotaMockResults(mapResults, t, false)
+	addNamespaceQuotaMockResults(mapResults, t, false)
+	addVMPodVMIMockResults(mapResults)
+	addVMGpuMockResults(mapResults)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -264,6 +299,9 @@ func TestGenerateReportsNoEnabledROS(t *testing.T) {
 	res := &model.Vector{}
 	mapResults[rosNamespaceFilter.QueryString] = &mockPromResult{value: *res}
 	addClusterQuotaMockResults(mapResults, t, false)
+	addNamespaceQuotaMockResults(mapResults, t, false)
+	addVMPodVMIMockResults(mapResults)
+	addVMGpuMockResults(mapResults)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -319,6 +357,9 @@ func TestGenerateReportsNoCost(t *testing.T) {
 		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
 	addClusterQuotaMockResults(mapResults, t, false)
+	addNamespaceQuotaMockResults(mapResults, t, false)
+	addVMPodVMIMockResults(mapResults)
+	addVMGpuMockResults(mapResults)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -382,6 +423,9 @@ func TestGenerateReportsQueryErrors(t *testing.T) {
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
 		addClusterQuotaMockResults(mapResults, t, false)
+		addNamespaceQuotaMockResults(mapResults, t, false)
+		addVMPodVMIMockResults(mapResults)
+		addVMGpuMockResults(mapResults)
 
 		return mapResults
 	}

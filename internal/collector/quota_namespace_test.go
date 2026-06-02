@@ -6,8 +6,12 @@
 package collector
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/prometheus/common/model"
 )
 
 var quotaNamespaceUsedQueryKeys = []string{
@@ -112,5 +116,19 @@ func TestRosNamespaceRow_CSVHeader_IncludesNamespaceUsedColumns(t *testing.T) {
 	if cpuReqUsedIdx != cpuReqSumIdx+1 {
 		t.Errorf("cpu_request_namespace_used should follow cpu_request_namespace_sum, got indices %d and %d",
 			cpuReqSumIdx, cpuReqUsedIdx)
+	}
+}
+
+func addNamespaceQuotaMockResults(mapResults mappedMockPromResult, t *testing.T, withData bool) {
+	t.Helper()
+	for _, query := range *rosNamespaceQuotaQueries {
+		res := &model.Vector{}
+		if withData {
+			dataPath := filepath.Join("test_files", "test_data", query.Name)
+			if _, err := os.Stat(dataPath); err == nil {
+				Load(dataPath, res, t)
+			}
+		}
+		mapResults[query.QueryString] = &mockPromResult{value: *res}
 	}
 }
