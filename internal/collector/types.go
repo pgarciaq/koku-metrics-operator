@@ -218,6 +218,7 @@ type storageRow struct {
 	*dateTimes
 	Namespace                                string
 	Pod                                      string
+	VMName                                   string
 	Node                                     string `mapstructure:"node"`
 	PersistentVolumeClaim                    string `mapstructure:"persistentvolumeclaim"`
 	PersistentVolume                         string `mapstructure:"persistentvolume"`
@@ -240,6 +241,7 @@ func (storageRow) csvHeader() []string {
 		"interval_end",
 		"namespace",
 		"pod",
+		"vm_name",
 		"node",
 		"persistentvolumeclaim",
 		"persistentvolume",
@@ -262,6 +264,7 @@ func (row storageRow) csvRow() []string {
 		row.IntervalEnd,
 		row.Namespace,
 		row.Pod,
+		row.VMName,
 		row.Node,
 		row.PersistentVolumeClaim,
 		row.PersistentVolume,
