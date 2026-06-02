@@ -652,6 +652,7 @@ func (row rosContainerRow) string() string { return strings.Join(row.csvRow(), "
 type rosNamespaceRow struct {
 	*dateTimes
 	Namespace         string `mapstructure:"namespace"`
+	QuotaName         string `mapstructure:"quota_name"`
 	CPURequestSum     string `mapstructure:"cpu-request-namespace-sum"`
 	CPURequestUsed    string `mapstructure:"cpu-request-namespace-used"`
 	CPULimitSum       string `mapstructure:"cpu-limit-namespace-sum"`
@@ -666,6 +667,12 @@ type rosNamespaceRow struct {
 	MemoryRequestUsed string `mapstructure:"memory-request-namespace-used"`
 	MemoryLimitSum    string `mapstructure:"memory-limit-namespace-sum"`
 	MemoryLimitUsed   string `mapstructure:"memory-limit-namespace-used"`
+	StorageRequestHard string `mapstructure:"storage-request-namespace-hard"`
+	StorageRequestUsed string `mapstructure:"storage-request-namespace-used"`
+	PodsHard           string `mapstructure:"pods-namespace-hard"`
+	PodsUsed           string `mapstructure:"pods-namespace-used"`
+	ObjectCountHard    string `mapstructure:"object-count-namespace-hard"`
+	ObjectCountUsed    string `mapstructure:"object-count-namespace-used"`
 	MemoryUsageAvg    string `mapstructure:"memory-usage-namespace-avg"`
 	MemoryUsageMax    string `mapstructure:"memory-usage-namespace-max"`
 	MemoryUsageMin    string `mapstructure:"memory-usage-namespace-min"`
@@ -685,6 +692,7 @@ func (rosNamespaceRow) csvHeader() []string {
 		"interval_start",
 		"interval_end",
 		"namespace",
+		"quota_name",
 		"cpu_request_namespace_sum",
 		"cpu_request_namespace_used",
 		"cpu_limit_namespace_sum",
@@ -699,6 +707,12 @@ func (rosNamespaceRow) csvHeader() []string {
 		"memory_request_namespace_used",
 		"memory_limit_namespace_sum",
 		"memory_limit_namespace_used",
+		"storage_request_namespace_hard",
+		"storage_request_namespace_used",
+		"pods_namespace_hard",
+		"pods_namespace_used",
+		"object_count_namespace_hard",
+		"object_count_namespace_used",
 		"memory_usage_namespace_avg",
 		"memory_usage_namespace_max",
 		"memory_usage_namespace_min",
@@ -719,6 +733,7 @@ func (row rosNamespaceRow) csvRow() []string {
 		row.IntervalStart,
 		row.IntervalEnd,
 		row.Namespace,
+		row.QuotaName,
 		row.CPURequestSum,
 		row.CPURequestUsed,
 		row.CPULimitSum,
@@ -733,6 +748,12 @@ func (row rosNamespaceRow) csvRow() []string {
 		row.MemoryRequestUsed,
 		row.MemoryLimitSum,
 		row.MemoryLimitUsed,
+		row.StorageRequestHard,
+		row.StorageRequestUsed,
+		row.PodsHard,
+		row.PodsUsed,
+		row.ObjectCountHard,
+		row.ObjectCountUsed,
 		row.MemoryUsageAvg,
 		row.MemoryUsageMax,
 		row.MemoryUsageMin,

@@ -154,6 +154,8 @@ Fields for metrics related to containers:
 * `instance_type`: Node instance type from `kube_node_labels` (e.g. `label_node_kubernetes_io_instance_type`); used by ros-ocp-backend for Level 3 node consolidation grouping.
 * `node_allocatable_cpu_cores`: Node allocatable CPU cores from `kube_node_status_allocatable{resource='cpu'}` (preferred over capacity for utilization ratios).
 * `node_allocatable_memory_bytes`: Node allocatable memory bytes from `kube_node_status_allocatable{resource='memory'}`.
+* `machineset_name`: MachineSet name from Machine API ownerReferences (empty if Machine API unavailable).
+* `node_capacity_pods`: Maximum pod capacity for the node (from `kube_node_status_capacity{resource="pods"}`).
 * `resource_id`: The unique identifier of the resource.
 * `cpu_request_container_avg`: The average CPU request for the container.
 * `cpu_request_container_sum`: The total CPU request for the container.

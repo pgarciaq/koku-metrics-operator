@@ -685,19 +685,17 @@ func generateResourceOptimizationReports(log gologr.Logger, c *PrometheusCollect
 
 	//resource optimization namespace reports
 	log.Info(fmt.Sprintf("querying for resource-optimization namespace metrics for ts: %+v", ts))
-	rosNamespaceResults := mappedResults{}
-
-	if err := c.getQueryResults(ts, rosNamespaceQueries, &rosNamespaceResults, MaxRetries); err != nil {
+	rosNamespaceUsageResults := mappedResults{}
+	if err := c.getQueryResults(ts, rosNamespaceQueries, &rosNamespaceUsageResults, MaxRetries); err != nil {
 		return err
 	}
 
-	rosNamespaceRows := make(mappedCSVStruct)
-	for rosNs, val := range rosNamespaceResults {
-		usage := newROSNamespaceRow(c.TimeSeries)
-		if err := getStruct(val, &usage, rosNamespaceRows, rosNs); err != nil {
-			return err
-		}
+	rosNamespaceQuotaResults := mappedResults{}
+	if err := c.getQueryResults(ts, rosNamespaceQuotaQueries, &rosNamespaceQuotaResults, MaxRetries); err != nil {
+		return err
 	}
+
+	rosNamespaceRows := mergeRosNamespaceCSVRows(rosNamespaceUsageResults, rosNamespaceQuotaResults, c.TimeSeries)
 	emptyROSNamespaceRow := newROSNamespaceRow(c.TimeSeries)
 	rosNamespaceReport := report{
 		file: &file{
