@@ -139,14 +139,16 @@ var (
 			"(max by(namespace, workload, workload_type) (" +
 			"label_replace(kube_deployment_spec_replicas, 'workload', '$1', 'deployment', '(.+)') " +
 			"or label_replace(kube_statefulset_replicas, 'workload', '$1', 'statefulset', '(.+)') " +
-			"or label_replace(kube_daemonset_status_desired_number_scheduled, 'workload', '$1', 'daemonset', '(.+)')" +
+			"or label_replace(kube_daemonset_status_desired_number_scheduled, 'workload', '$1', 'daemonset', '(.+)') " +
+			"or label_replace(openshift_apps_deploymentconfig_replicas, 'workload', '$1', 'deploymentconfig', '(.+)')" +
 			") * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
 			", 'workload_type', 'deployment', 'workload_type', '')" +
 			" or label_replace(" +
 			"(max by(namespace, workload, workload_type) (" +
 			"label_replace(kube_deployment_spec_replicas, 'workload', '$1', 'deployment', '(.+)') " +
 			"or label_replace(kube_statefulset_replicas, 'workload', '$1', 'statefulset', '(.+)') " +
-			"or label_replace(kube_daemonset_status_desired_number_scheduled, 'workload', '$1', 'daemonset', '(.+)')" +
+			"or label_replace(kube_daemonset_status_desired_number_scheduled, 'workload', '$1', 'daemonset', '(.+)') " +
+			"or label_replace(openshift_apps_deploymentconfig_replicas, 'workload', '$1', 'deploymentconfig', '(.+)')" +
 			") * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
 			", 'workload_type', 'deployment', 'workload_type', '')" +
 			")",
@@ -160,14 +162,16 @@ var (
 			"(max by(namespace, workload, workload_type) (" +
 			"label_replace(kube_deployment_status_replicas_available, 'workload', '$1', 'deployment', '(.+)') " +
 			"or label_replace(kube_statefulset_status_replicas_ready, 'workload', '$1', 'statefulset', '(.+)') " +
-			"or label_replace(kube_daemonset_status_number_available, 'workload', '$1', 'daemonset', '(.+)')" +
+			"or label_replace(kube_daemonset_status_number_available, 'workload', '$1', 'daemonset', '(.+)') " +
+			"or label_replace(openshift_apps_deploymentconfig_status_available_replicas, 'workload', '$1', 'deploymentconfig', '(.+)')" +
 			") * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
 			", 'workload_type', 'deployment', 'workload_type', '')" +
 			" or label_replace(" +
 			"(max by(namespace, workload, workload_type) (" +
 			"label_replace(kube_deployment_status_replicas_available, 'workload', '$1', 'deployment', '(.+)') " +
 			"or label_replace(kube_statefulset_status_replicas_ready, 'workload', '$1', 'statefulset', '(.+)') " +
-			"or label_replace(kube_daemonset_status_number_available, 'workload', '$1', 'daemonset', '(.+)')" +
+			"or label_replace(kube_daemonset_status_number_available, 'workload', '$1', 'daemonset', '(.+)') " +
+			"or label_replace(openshift_apps_deploymentconfig_status_available_replicas, 'workload', '$1', 'deploymentconfig', '(.+)')" +
 			") * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})" +
 			", 'workload_type', 'deployment', 'workload_type', '')" +
 			")",
@@ -205,21 +209,21 @@ var (
 		"ros:namespace_total_pods_avg":       "(avg_over_time(sum by(namespace) (kube_pod_info)[15m:]) * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or avg_over_time(sum by(namespace) (kube_pod_info)[15m:]) * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})",
 
 		// cluster-scoped ClusterResourceQuota metrics (openshift-state-metrics)
-		"ros:cluster_quota_cpu_request_hard":    "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.cpu', type='hard'})",
-		"ros:cluster_quota_cpu_request_used":    "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.cpu', type='used'})",
-		"ros:cluster_quota_cpu_limit_hard":      "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.cpu', type='hard'})",
-		"ros:cluster_quota_cpu_limit_used":      "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.cpu', type='used'})",
-		"ros:cluster_quota_memory_request_hard": "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.memory', type='hard'})",
-		"ros:cluster_quota_memory_request_used": "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.memory', type='used'})",
-		"ros:cluster_quota_memory_limit_hard":   "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.memory', type='hard'})",
-		"ros:cluster_quota_memory_limit_used":   "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.memory', type='used'})",
+		"ros:cluster_quota_cpu_request_hard":     "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.cpu', type='hard'})",
+		"ros:cluster_quota_cpu_request_used":     "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.cpu', type='used'})",
+		"ros:cluster_quota_cpu_limit_hard":       "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.cpu', type='hard'})",
+		"ros:cluster_quota_cpu_limit_used":       "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.cpu', type='used'})",
+		"ros:cluster_quota_memory_request_hard":  "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.memory', type='hard'})",
+		"ros:cluster_quota_memory_request_used":  "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.memory', type='used'})",
+		"ros:cluster_quota_memory_limit_hard":    "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.memory', type='hard'})",
+		"ros:cluster_quota_memory_limit_used":    "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.memory', type='used'})",
 		"ros:cluster_quota_storage_request_hard": "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.storage', type='hard'})",
 		"ros:cluster_quota_storage_request_used": "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.storage', type='used'})",
-		"ros:cluster_quota_pods_hard":           "sum by (name) (openshift_clusterresourcequota_usage{resource='pods', type='hard'})",
-		"ros:cluster_quota_pods_used":           "sum by (name) (openshift_clusterresourcequota_usage{resource='pods', type='used'})",
-		"ros:cluster_quota_object_count_hard":   "sum by (name) (openshift_clusterresourcequota_usage{resource=~'count/.+', type='hard'})",
-		"ros:cluster_quota_object_count_used":   "sum by (name) (openshift_clusterresourcequota_usage{resource=~'count/.+', type='used'})",
-		"ros:cluster_quota_namespace_members":   "max by (name, namespace) (openshift_clusterresourcequota_usage{type='used'} > 0)",
+		"ros:cluster_quota_pods_hard":            "sum by (name) (openshift_clusterresourcequota_usage{resource='pods', type='hard'})",
+		"ros:cluster_quota_pods_used":            "sum by (name) (openshift_clusterresourcequota_usage{resource='pods', type='used'})",
+		"ros:cluster_quota_object_count_hard":    "sum by (name) (openshift_clusterresourcequota_usage{resource=~'count/.+', type='hard'})",
+		"ros:cluster_quota_object_count_used":    "sum by (name) (openshift_clusterresourcequota_usage{resource=~'count/.+', type='used'})",
+		"ros:cluster_quota_namespace_members":    "max by (name, namespace) (openshift_clusterresourcequota_usage{type='used'} > 0)",
 	}
 
 	rosNamespaceFilter = query{
