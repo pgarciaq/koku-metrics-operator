@@ -11,6 +11,7 @@ var (
 	QueryMap = map[string]string{
 		"cost:node_allocatable_cpu_cores":    "kube_node_status_allocatable{resource='cpu'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info) ",
 		"cost:node_allocatable_memory_bytes": "kube_node_status_allocatable{resource='memory'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
+		"cost:node_allocatable_gpu_count":    "kube_node_status_allocatable{resource='nvidia.com/gpu'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
 		"cost:node_capacity_cpu_cores":       "kube_node_status_capacity{resource='cpu'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
 		"cost:node_capacity_memory_bytes":    "kube_node_status_capacity{resource='memory'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
 		"cost:node_capacity_pods":            "kube_node_status_capacity{resource='pods'} * on(node) group_left(provider_id) max by (node, provider_id) (kube_node_info)",
@@ -177,18 +178,18 @@ var (
 			")",
 
 		// resource optimization NVIDIA GPU container level metrics queries
-		"ros:accelerator_frame_buffer_usage_min": "(min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(min by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(min by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
-		"ros:accelerator_frame_buffer_usage_max": "(max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(max by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(max by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
-		"ros:accelerator_frame_buffer_usage_avg": "(avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(avg by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(avg by (modelName, GPU_I_PROFILE, container, namespace, pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
-		"ros:tensor_pipe_active_min":             "(min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:tensor_pipe_active_max":             "(max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:tensor_pipe_active_avg":             "(avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:dram_active_min":                    "(min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:dram_active_max":                    "(max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:dram_active_avg":                    "(avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:sm_active_min":                      "(min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:sm_active_max":                      "(max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
-		"ros:sm_active_avg":                      "(avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:accelerator_frame_buffer_usage_min": "(min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(min by (modelName, GPU_I_PROFILE, UUID, container, namespace, pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(min by (modelName, GPU_I_PROFILE, UUID, container, namespace, pod, Hostname) (min_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
+		"ros:accelerator_frame_buffer_usage_max": "(max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(max by (modelName, GPU_I_PROFILE, UUID, container, namespace, pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(max by (modelName, GPU_I_PROFILE, UUID, container, namespace, pod, Hostname) (max_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
+		"ros:accelerator_frame_buffer_usage_avg": "(avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or label_replace(label_replace(label_replace(avg by (modelName, GPU_I_PROFILE, UUID, container, namespace, pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)') or label_replace(label_replace(label_replace(avg by (modelName, GPU_I_PROFILE, UUID, container, namespace, pod, Hostname) (avg_over_time(DCGM_FI_DEV_FB_USED{namespace != '', container != '', pod != '', exported_namespace=''}[15m])) * on(namespace) group_left() kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_container', '$1', 'container', '(.*)'), 'exported_namespace', '$1', 'namespace', '(.*)'), 'exported_pod', '$1', 'pod', '(.*)'))",
+		"ros:tensor_pipe_active_min":             "(min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:tensor_pipe_active_max":             "(max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:tensor_pipe_active_avg":             "(avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:dram_active_min":                    "(min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:dram_active_max":                    "(max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:dram_active_avg":                    "(avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:sm_active_min":                      "(min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or min by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (min_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:sm_active_max":                      "(max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or max by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (max_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
+		"ros:sm_active_avg":                      "(avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_insights_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)') or avg by (modelName, GPU_I_PROFILE, UUID, exported_container, exported_namespace, exported_pod, Hostname) (avg_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_namespace != '', exported_container != '', exported_pod != ''}[15m])) * on(exported_namespace) group_left(namespace) label_replace(kube_namespace_labels{label_cost_management_optimizations='true'}, 'exported_namespace', '$1', 'namespace', '(.*)'))",
 
 		// resource optimization namespace metrics queries (usage/throttle/pods; quota hard/used in initNamespaceQuotaQueryMap)
 		"ros:cpu_usage_namespace_avg":        "(avg_over_time(sum by(namespace) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{container!='', container!='POD', pod!=''})[15m:]) * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or avg_over_time(sum by(namespace) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{container!='', container!='POD', pod!=''})[15m:]) * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})",
@@ -252,6 +253,16 @@ var (
 				ValName:         "node-allocatable-memory-bytes",
 				Method:          "max",
 				TransformedName: "node-allocatable-memory-byte-seconds",
+			},
+			RowKey: []model.LabelName{"node"},
+		},
+		query{
+			Name:        "node-allocatable-gpu-count",
+			QueryString: QueryMap["cost:node_allocatable_gpu_count"],
+			MetricKey:   staticFields{"node": "node", "provider_id": "provider_id"},
+			QueryValue: &saveQueryValue{
+				ValName: "node-allocatable-gpu-count",
+				Method:  "max",
 			},
 			RowKey: []model.LabelName{"node"},
 		},
@@ -953,6 +964,7 @@ var (
 			QueryString: QueryMap["ros:accelerator_frame_buffer_usage_min"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -962,13 +974,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "accelerator-frame-buffer-usage-min",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "accelerator-frame-buffer-usage-max",
 			QueryString: QueryMap["ros:accelerator_frame_buffer_usage_max"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -978,13 +991,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "accelerator-frame-buffer-usage-max",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "accelerator-frame-buffer-usage-avg",
 			QueryString: QueryMap["ros:accelerator_frame_buffer_usage_avg"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -994,13 +1008,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "accelerator-frame-buffer-usage-avg",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "tensor-pipe-active-min",
 			QueryString: QueryMap["ros:tensor_pipe_active_min"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1010,13 +1025,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "tensor-pipe-active-min",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "tensor-pipe-active-max",
 			QueryString: QueryMap["ros:tensor_pipe_active_max"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1026,13 +1042,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "tensor-pipe-active-max",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "tensor-pipe-active-avg",
 			QueryString: QueryMap["ros:tensor_pipe_active_avg"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1042,13 +1059,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "tensor-pipe-active-avg",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "dram-active-min",
 			QueryString: QueryMap["ros:dram_active_min"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1058,13 +1076,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "dram-active-min",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "dram-active-max",
 			QueryString: QueryMap["ros:dram_active_max"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1074,13 +1093,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "dram-active-max",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "dram-active-avg",
 			QueryString: QueryMap["ros:dram_active_avg"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1090,13 +1110,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "dram-active-avg",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "sm-active-min",
 			QueryString: QueryMap["ros:sm_active_min"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1106,13 +1127,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "sm-active-min",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "sm-active-max",
 			QueryString: QueryMap["ros:sm_active_max"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1122,13 +1144,14 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "sm-active-max",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 		query{
 			Name:        "sm-active-avg",
 			QueryString: QueryMap["ros:sm_active_avg"],
 			MetricKey: staticFields{
 				"accelerator_model_name":   "modelName",
+				"gpu_uuid":                 "UUID",
 				"container":                "exported_container",
 				"namespace":                "exported_namespace",
 				"pod":                      "exported_pod",
@@ -1138,7 +1161,7 @@ var (
 			QueryValue: &saveQueryValue{
 				ValName: "sm-active-avg",
 			},
-			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace"},
+			RowKey: []model.LabelName{"exported_container", "exported_pod", "exported_namespace", "UUID"},
 		},
 	}
 

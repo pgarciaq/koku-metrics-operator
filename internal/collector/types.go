@@ -102,6 +102,7 @@ type nodeRow struct {
 	Node                          string `mapstructure:"node"`
 	NodeAllocatableCPUCores       string `mapstructure:"node-allocatable-cpu-cores"`
 	NodeAllocatableMemoryBytes    string `mapstructure:"node-allocatable-memory-bytes"`
+	NodeAllocatableGPUCount       string `mapstructure:"node-allocatable-gpu-count"`
 	NodeCapacityCPUCores          string `mapstructure:"node-capacity-cpu-cores"`
 	ModeCapacityCPUCoreSeconds    string `mapstructure:"node-capacity-cpu-core-seconds"`
 	NodeCapacityMemoryBytes       string `mapstructure:"node-capacity-memory-bytes"`
@@ -497,6 +498,7 @@ type rosContainerRow struct {
 	AvailableReplicas              string `mapstructure:"available-replicas"`
 	AcceleratorModelName           string `mapstructure:"accelerator_model_name"`
 	AcceleratorProfileName         string `mapstructure:"accelerator_profile_name"`
+	GpuUUID                        string `mapstructure:"gpu_uuid"`
 	AcceleratorFrameBufferUsageMin string `mapstructure:"accelerator-frame-buffer-usage-min"`
 	AcceleratorFrameBufferUsageMax string `mapstructure:"accelerator-frame-buffer-usage-max"`
 	AcceleratorFrameBufferUsageAvg string `mapstructure:"accelerator-frame-buffer-usage-avg"`
@@ -532,6 +534,7 @@ func (rosContainerRow) csvHeader() []string {
 		"node_capacity_pods",
 		"node_allocatable_cpu_cores",
 		"node_allocatable_memory_bytes",
+		"node_allocatable_gpu_count",
 		"instance_type",
 		"machineset_name",
 		"cpu_request_container_avg",
@@ -564,6 +567,7 @@ func (rosContainerRow) csvHeader() []string {
 		"available_replicas",
 		"accelerator_model_name",
 		"accelerator_profile_name",
+		"gpu_uuid",
 		"accelerator_frame_buffer_usage_min",
 		"accelerator_frame_buffer_usage_max",
 		"accelerator_frame_buffer_usage_avg",
@@ -600,6 +604,7 @@ func (row rosContainerRow) csvRow() []string {
 		row.NodeCapacityPods,
 		row.NodeAllocatableCPUCores,
 		row.NodeAllocatableMemoryBytes,
+		row.NodeAllocatableGPUCount,
 		row.InstanceType,
 		row.MachineSetName,
 		row.CPURequestContainerAvg,
@@ -632,6 +637,7 @@ func (row rosContainerRow) csvRow() []string {
 		row.AvailableReplicas,
 		row.AcceleratorModelName,
 		row.AcceleratorProfileName,
+		row.GpuUUID,
 		row.AcceleratorFrameBufferUsageMin,
 		row.AcceleratorFrameBufferUsageMax,
 		row.AcceleratorFrameBufferUsageAvg,
@@ -651,38 +657,38 @@ func (row rosContainerRow) string() string { return strings.Join(row.csvRow(), "
 
 type rosNamespaceRow struct {
 	*dateTimes
-	Namespace         string `mapstructure:"namespace"`
-	QuotaName         string `mapstructure:"quota_name"`
-	CPURequestSum     string `mapstructure:"cpu-request-namespace-sum"`
-	CPURequestUsed    string `mapstructure:"cpu-request-namespace-used"`
-	CPULimitSum       string `mapstructure:"cpu-limit-namespace-sum"`
-	CPULimitUsed      string `mapstructure:"cpu-limit-namespace-used"`
-	CPUUsageAvg       string `mapstructure:"cpu-usage-namespace-avg"`
-	CPUUsageMax       string `mapstructure:"cpu-usage-namespace-max"`
-	CPUUsageMin       string `mapstructure:"cpu-usage-namespace-min"`
-	CPUThrottleAvg    string `mapstructure:"cpu-throttle-namespace-avg"`
-	CPUThrottleMax    string `mapstructure:"cpu-throttle-namespace-max"`
-	CPUThrottleMin    string `mapstructure:"cpu-throttle-namespace-min"`
-	MemoryRequestSum  string `mapstructure:"memory-request-namespace-sum"`
-	MemoryRequestUsed string `mapstructure:"memory-request-namespace-used"`
-	MemoryLimitSum    string `mapstructure:"memory-limit-namespace-sum"`
-	MemoryLimitUsed   string `mapstructure:"memory-limit-namespace-used"`
+	Namespace          string `mapstructure:"namespace"`
+	QuotaName          string `mapstructure:"quota_name"`
+	CPURequestSum      string `mapstructure:"cpu-request-namespace-sum"`
+	CPURequestUsed     string `mapstructure:"cpu-request-namespace-used"`
+	CPULimitSum        string `mapstructure:"cpu-limit-namespace-sum"`
+	CPULimitUsed       string `mapstructure:"cpu-limit-namespace-used"`
+	CPUUsageAvg        string `mapstructure:"cpu-usage-namespace-avg"`
+	CPUUsageMax        string `mapstructure:"cpu-usage-namespace-max"`
+	CPUUsageMin        string `mapstructure:"cpu-usage-namespace-min"`
+	CPUThrottleAvg     string `mapstructure:"cpu-throttle-namespace-avg"`
+	CPUThrottleMax     string `mapstructure:"cpu-throttle-namespace-max"`
+	CPUThrottleMin     string `mapstructure:"cpu-throttle-namespace-min"`
+	MemoryRequestSum   string `mapstructure:"memory-request-namespace-sum"`
+	MemoryRequestUsed  string `mapstructure:"memory-request-namespace-used"`
+	MemoryLimitSum     string `mapstructure:"memory-limit-namespace-sum"`
+	MemoryLimitUsed    string `mapstructure:"memory-limit-namespace-used"`
 	StorageRequestHard string `mapstructure:"storage-request-namespace-hard"`
 	StorageRequestUsed string `mapstructure:"storage-request-namespace-used"`
 	PodsHard           string `mapstructure:"pods-namespace-hard"`
 	PodsUsed           string `mapstructure:"pods-namespace-used"`
 	ObjectCountHard    string `mapstructure:"object-count-namespace-hard"`
 	ObjectCountUsed    string `mapstructure:"object-count-namespace-used"`
-	MemoryUsageAvg    string `mapstructure:"memory-usage-namespace-avg"`
-	MemoryUsageMax    string `mapstructure:"memory-usage-namespace-max"`
-	MemoryUsageMin    string `mapstructure:"memory-usage-namespace-min"`
-	MemoryRSSUsageAvg string `mapstructure:"memory-rss-usage-namespace-avg"`
-	MemoryRSSUsageMax string `mapstructure:"memory-rss-usage-namespace-max"`
-	MemoryRSSUsageMin string `mapstructure:"memory-rss-usage-namespace-min"`
-	PodsRunningMax    string `mapstructure:"pods-running-namespace-max"`
-	PodsRunningAvg    string `mapstructure:"pods-running-namespace-avg"`
-	PodsTotalMax      string `mapstructure:"pods-total-namespace-max"`
-	PodsTotalAvg      string `mapstructure:"pods-total-namespace-avg"`
+	MemoryUsageAvg     string `mapstructure:"memory-usage-namespace-avg"`
+	MemoryUsageMax     string `mapstructure:"memory-usage-namespace-max"`
+	MemoryUsageMin     string `mapstructure:"memory-usage-namespace-min"`
+	MemoryRSSUsageAvg  string `mapstructure:"memory-rss-usage-namespace-avg"`
+	MemoryRSSUsageMax  string `mapstructure:"memory-rss-usage-namespace-max"`
+	MemoryRSSUsageMin  string `mapstructure:"memory-rss-usage-namespace-min"`
+	PodsRunningMax     string `mapstructure:"pods-running-namespace-max"`
+	PodsRunningAvg     string `mapstructure:"pods-running-namespace-avg"`
+	PodsTotalMax       string `mapstructure:"pods-total-namespace-max"`
+	PodsTotalAvg       string `mapstructure:"pods-total-namespace-avg"`
 }
 
 func (rosNamespaceRow) csvHeader() []string {
