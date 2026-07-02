@@ -8,9 +8,9 @@ package collector
 import (
 	"testing"
 
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"github.com/go-logr/logr"
 )
 
 func TestMachineSetNameFromMachine(t *testing.T) {

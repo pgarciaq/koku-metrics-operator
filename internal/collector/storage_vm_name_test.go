@@ -17,9 +17,9 @@ func TestVMNameForStoragePod(t *testing.T) {
 	}
 
 	tests := []struct {
-		pod      string
-		ns       string
-		want     string
+		pod  string
+		ns   string
+		want string
 	}{
 		{"virt-launcher-fedora-vm-x9y8z", "kubevirt", "fedora-vm"},
 		{"virt-launcher-my-vm-abc12", "prod", "my-vm"},

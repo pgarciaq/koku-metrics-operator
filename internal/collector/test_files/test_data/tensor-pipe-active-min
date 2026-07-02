@@ -6,7 +6,8 @@
 			"exported_namespace": "gpu-test",
 			"exported_pod": "gpu-pod-123",
 			"Hostname": "gpu-node-1",
-			"GPU_I_PROFILE": "0"
+			"GPU_I_PROFILE": "0",
+			"UUID": "GPU-1a2b3c4d-5e6f-7890-abcd-ef1234567890"
 		},
 		"value": [
 			1677009600,
@@ -20,7 +21,8 @@
 			"exported_namespace": "ai-project",
 			"exported_pod": "training-pod-456",
 			"Hostname": "gpu-node-2",
-			"GPU_I_PROFILE": "1"
+			"GPU_I_PROFILE": "1",
+			"UUID": "GPU-9z8y7x6w-5v4u-3210-dcba-fe0987654321"
 		},
 		"value": [
 			1677009600,

@@ -261,8 +261,20 @@ func TestRosContainerRow_InstanceTypeColumn(t *testing.T) {
 	if memAllocIdx < 0 {
 		t.Fatal("node_allocatable_memory_bytes must be in csvHeader()")
 	}
-	if instanceTypeIdx != memAllocIdx+1 {
-		t.Errorf("instance_type should follow node_allocatable_memory_bytes, got indices %d and %d", instanceTypeIdx, memAllocIdx)
+	gpuAllocIdx := -1
+	for i, col := range header {
+		if col == "node_allocatable_gpu_count" {
+			gpuAllocIdx = i
+		}
+	}
+	if gpuAllocIdx < 0 {
+		t.Fatal("node_allocatable_gpu_count must be in csvHeader()")
+	}
+	if gpuAllocIdx != memAllocIdx+1 {
+		t.Errorf("node_allocatable_gpu_count should follow node_allocatable_memory_bytes, got indices %d and %d", gpuAllocIdx, memAllocIdx)
+	}
+	if instanceTypeIdx != gpuAllocIdx+1 {
+		t.Errorf("instance_type should follow node_allocatable_gpu_count, got indices %d and %d", instanceTypeIdx, gpuAllocIdx)
 	}
 	machinesetIdx := -1
 	for i, col := range header {
