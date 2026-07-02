@@ -1,0 +1,178 @@
+[
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "requests.cpu"
+		},
+		"value": [
+			1677009600,
+			"0.05"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "requests.cpu"
+		},
+		"value": [
+			1677009600,
+			"0.05"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "limits.cpu"
+		},
+		"value": [
+			1677009600,
+			"0.25"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "limits.cpu"
+		},
+		"value": [
+			1677009600,
+			"0.25"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "requests.memory"
+		},
+		"value": [
+			1677009600,
+			"10485760"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "requests.memory"
+		},
+		"value": [
+			1677009600,
+			"10485760"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "limits.memory"
+		},
+		"value": [
+			1677009600,
+			"262144000"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "limits.memory"
+		},
+		"value": [
+			1677009600,
+			"262144000"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "requests.storage"
+		},
+		"value": [
+			1677009600,
+			"1073741824"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "requests.storage"
+		},
+		"value": [
+			1677009600,
+			"1073741824"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "pods"
+		},
+		"value": [
+			1677009600,
+			"1"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "pods"
+		},
+		"value": [
+			1677009600,
+			"1"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "count/pods"
+		},
+		"value": [
+			1677009600,
+			"3"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "costmanagement-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "count/configmaps"
+		},
+		"value": [
+			1677009600,
+			"2"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "count/pods"
+		},
+		"value": [
+			1677009600,
+			"3"
+		]
+	},
+	{
+		"metric": {
+			"namespace": "koku-metrics-operator",
+			"resourcequota": "compute-resources",
+			"resource": "count/configmaps"
+		},
+		"value": [
+			1677009600,
+			"2"
+		]
+	}
+]

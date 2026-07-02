@@ -690,10 +690,11 @@ func generateResourceOptimizationReports(log gologr.Logger, c *PrometheusCollect
 		return err
 	}
 
-	rosNamespaceQuotaResults := mappedResults{}
-	if err := c.getQueryResults(ts, rosNamespaceQuotaQueries, &rosNamespaceQuotaResults, MaxRetries); err != nil {
+	rosNamespaceQuotaRaw := mappedResults{}
+	if err := c.getQueryResults(ts, rosNamespaceQuotaQueries, &rosNamespaceQuotaRaw, MaxRetries); err != nil {
 		return err
 	}
+	rosNamespaceQuotaResults := pivotNamespaceQuotaResults(rosNamespaceQuotaRaw)
 
 	rosNamespaceRows := mergeRosNamespaceCSVRows(rosNamespaceUsageResults, rosNamespaceQuotaResults, c.TimeSeries)
 	emptyROSNamespaceRow := newROSNamespaceRow(c.TimeSeries)
