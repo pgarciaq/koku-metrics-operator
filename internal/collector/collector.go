@@ -719,17 +719,18 @@ func generateResourceOptimizationReports(log gologr.Logger, c *PrometheusCollect
 
 func generateROSClusterQuotaReport(log gologr.Logger, c *PrometheusCollector, dirCfg *dirconfig.DirectoryConfig, yearMonth string, ts time.Time) error {
 	log.Info(fmt.Sprintf("querying for resource-optimization cluster quota metrics for ts: %+v", ts))
-	rosClusterQuotaResults := mappedResults{}
+	rosClusterQuotaRaw := mappedResults{}
 
-	if err := c.getQueryResults(ts, rosClusterQuotaQueries, &rosClusterQuotaResults, MaxRetries); err != nil {
+	if err := c.getQueryResults(ts, rosClusterQuotaQueries, &rosClusterQuotaRaw, MaxRetries); err != nil {
 		return err
 	}
 
-	if len(rosClusterQuotaResults) == 0 {
+	if len(rosClusterQuotaRaw) == 0 {
 		log.Info("no ClusterResourceQuota metrics found, skipping cluster quota report generation")
 		return nil
 	}
 
+	rosClusterQuotaResults := pivotClusterQuotaResults(rosClusterQuotaRaw)
 	rosClusterQuotaRows := make(mappedCSVStruct)
 	for crqName, val := range rosClusterQuotaResults {
 		usage := newROSClusterQuotaRow(c.TimeSeries)

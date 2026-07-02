@@ -1,0 +1,42 @@
+[
+	{
+		"metric": {
+			"name": "team-a",
+			"resource": "requests.cpu"
+		},
+		"value": [
+			1677009600,
+			"10"
+		]
+	},
+	{
+		"metric": {
+			"name": "team-a",
+			"resource": "limits.cpu"
+		},
+		"value": [
+			1677009600,
+			"20"
+		]
+	},
+	{
+		"metric": {
+			"name": "team-a",
+			"resource": "requests.memory"
+		},
+		"value": [
+			1677009600,
+			"1073741824"
+		]
+	},
+	{
+		"metric": {
+			"name": "team-a",
+			"resource": "limits.memory"
+		},
+		"value": [
+			1677009600,
+			"2147483648"
+		]
+	}
+]

@@ -209,22 +209,9 @@ var (
 		"ros:namespace_total_pods_max":       "(max_over_time(sum by(namespace) (kube_pod_info)[15m:]) * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or max_over_time(sum by(namespace) (kube_pod_info)[15m:]) * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})",
 		"ros:namespace_total_pods_avg":       "(avg_over_time(sum by(namespace) (kube_pod_info)[15m:]) * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or avg_over_time(sum by(namespace) (kube_pod_info)[15m:]) * on(namespace) group_left kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})",
 
-		// cluster-scoped ClusterResourceQuota metrics (openshift-state-metrics)
-		"ros:cluster_quota_cpu_request_hard":     "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.cpu', type='hard'})",
-		"ros:cluster_quota_cpu_request_used":     "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.cpu', type='used'})",
-		"ros:cluster_quota_cpu_limit_hard":       "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.cpu', type='hard'})",
-		"ros:cluster_quota_cpu_limit_used":       "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.cpu', type='used'})",
-		"ros:cluster_quota_memory_request_hard":  "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.memory', type='hard'})",
-		"ros:cluster_quota_memory_request_used":  "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.memory', type='used'})",
-		"ros:cluster_quota_memory_limit_hard":    "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.memory', type='hard'})",
-		"ros:cluster_quota_memory_limit_used":    "sum by (name) (openshift_clusterresourcequota_usage{resource='limits.memory', type='used'})",
-		"ros:cluster_quota_storage_request_hard": "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.storage', type='hard'})",
-		"ros:cluster_quota_storage_request_used": "sum by (name) (openshift_clusterresourcequota_usage{resource='requests.storage', type='used'})",
-		"ros:cluster_quota_pods_hard":            "sum by (name) (openshift_clusterresourcequota_usage{resource='pods', type='hard'})",
-		"ros:cluster_quota_pods_used":            "sum by (name) (openshift_clusterresourcequota_usage{resource='pods', type='used'})",
-		"ros:cluster_quota_object_count_hard":    "sum by (name) (openshift_clusterresourcequota_usage{resource=~'count/.+', type='hard'})",
-		"ros:cluster_quota_object_count_used":    "sum by (name) (openshift_clusterresourcequota_usage{resource=~'count/.+', type='used'})",
-		"ros:cluster_quota_namespace_members":    "max by (name, namespace) (openshift_clusterresourcequota_usage{type='used'} > 0)",
+		// cluster-scoped ClusterResourceQuota: unified hard/used queries are registered by
+		// quota_cluster_queries.go init(); only the namespace membership query remains here.
+		"ros:cluster_quota_namespace_members": "max by (name, namespace) (openshift_clusterresourcequota_usage{type='used'} > 0)",
 	}
 
 	rosNamespaceFilter = query{
@@ -1312,134 +1299,8 @@ var (
 		},
 	}
 
-	rosClusterQuotaQueries = &querys{
-		query{
-			Name:        "cluster-quota-cpu-request-hard",
-			QueryString: QueryMap["ros:cluster_quota_cpu_request_hard"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "cpu-request-hard",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-cpu-request-used",
-			QueryString: QueryMap["ros:cluster_quota_cpu_request_used"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "cpu-request-used",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-cpu-limit-hard",
-			QueryString: QueryMap["ros:cluster_quota_cpu_limit_hard"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "cpu-limit-hard",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-cpu-limit-used",
-			QueryString: QueryMap["ros:cluster_quota_cpu_limit_used"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "cpu-limit-used",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-memory-request-hard",
-			QueryString: QueryMap["ros:cluster_quota_memory_request_hard"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "memory-request-hard",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-memory-request-used",
-			QueryString: QueryMap["ros:cluster_quota_memory_request_used"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "memory-request-used",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-memory-limit-hard",
-			QueryString: QueryMap["ros:cluster_quota_memory_limit_hard"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "memory-limit-hard",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-memory-limit-used",
-			QueryString: QueryMap["ros:cluster_quota_memory_limit_used"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "memory-limit-used",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-storage-request-hard",
-			QueryString: QueryMap["ros:cluster_quota_storage_request_hard"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "storage-request-hard",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-storage-request-used",
-			QueryString: QueryMap["ros:cluster_quota_storage_request_used"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "storage-request-used",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-pods-hard",
-			QueryString: QueryMap["ros:cluster_quota_pods_hard"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "pods-hard",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-pods-used",
-			QueryString: QueryMap["ros:cluster_quota_pods_used"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "pods-used",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-object-count-hard",
-			QueryString: QueryMap["ros:cluster_quota_object_count_hard"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "object-count-hard",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-		query{
-			Name:        "cluster-quota-object-count-used",
-			QueryString: QueryMap["ros:cluster_quota_object_count_used"],
-			MetricKey:   staticFields{"cluster_quota_name": "name"},
-			QueryValue: &saveQueryValue{
-				ValName: "object-count-used",
-			},
-			RowKey: []model.LabelName{"name"},
-		},
-	}
+	// rosClusterQuotaQueries is initialized by quota_cluster_queries.go init()
+	rosClusterQuotaQueries *querys
 )
 
 type querys []query

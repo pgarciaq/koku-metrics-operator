@@ -254,7 +254,7 @@ Legacy namespace-wide sums (section 2 above, without `quota_name`) may still app
 
 ### 3. ClusterResourceQuota Metrics (ROS)
 
-Monthly roll-up file: **`ros-openshift-cluster-quota-YYYYMM.csv`** (15-minute interval rows during collection). Collected from `openshift_clusterresourcequota_usage` via [`rosClusterQuotaQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/queries.go). One row per ClusterResourceQuota name per interval.
+Monthly roll-up file: **`ros-openshift-cluster-quota-YYYYMM.csv`** (15-minute interval rows during collection). Collected from `openshift_clusterresourcequota_usage` via [`rosClusterQuotaQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/quota_cluster_queries.go) (2 unified queries + pivot, plus 1 namespace membership query). One row per ClusterResourceQuota name per interval.
 
 | Field | Description |
 |-------|-------------|
