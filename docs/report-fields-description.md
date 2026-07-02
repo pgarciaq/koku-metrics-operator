@@ -230,7 +230,7 @@ Fields for metrics related to namespaces:
 
 ### 2b. Namespace ResourceQuota Metrics (ROS, per-quota)
 
-Monthly roll-up file: **`ros-openshift-namespace-usage-YYYYMM.csv`** (15-minute interval rows). Collected from `kube_resourcequota` via [`rosNamespaceQuotaQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/quota_namespace_queries.go). One row per **namespace + ResourceQuota object** (`quota_name` label) per interval.
+Monthly roll-up file: **`ros-openshift-namespace-usage-YYYYMM.csv`** (15-minute interval rows). Collected from `kube_resourcequota` via 2 unified PromQL queries (one for `type='hard'`, one for `type='used'`) defined in [`rosNamespaceQuotaQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/quota_namespace_queries.go). Results are pivoted from per-resource rows into named columns by `pivotNamespaceQuotaResults`. One row per **namespace + ResourceQuota object** (`quota_name` label) per interval.
 
 | Field | Description |
 |-------|-------------|
