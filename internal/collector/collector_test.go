@@ -61,6 +61,22 @@ func Load(path string, v interface{}, t *testing.T) {
 	}
 }
 
+// addNodeAllocCapMockResults registers mock Prometheus results for the unified
+// node allocatable/capacity queries. If withData is true, test data is loaded
+// from the unified test files; otherwise empty matrices are registered.
+func addNodeAllocCapMockResults(mapResults mappedMockPromResult, t *testing.T, withData bool) {
+	t.Helper()
+	for _, key := range nodeAllocCapMetricKeys {
+		res := &model.Matrix{}
+		if withData {
+			name := strings.TrimPrefix(key, "cost:")
+			name = strings.ReplaceAll(name, "_", "-")
+			Load(filepath.Join("test_files", "test_data", name), res, t)
+		}
+		mapResults[QueryMap[key]] = &mockPromResult{value: *res}
+	}
+}
+
 var (
 	fakeCR = &metricscfgv1beta1.MetricsConfig{Spec: metricscfgv1beta1.MetricsConfigSpec{
 		PrometheusConfig: metricscfgv1beta1.PrometheusSpec{
@@ -173,6 +189,7 @@ func TestGenerateReports(t *testing.T) {
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
 	}
+	addNodeAllocCapMockResults(mapResults, t, true)
 
 	qs := append(*rosContainerQueries, rosNamespaceFilter)
 	for _, query := range qs {
@@ -238,6 +255,7 @@ func TestGenerateReportsNoROS(t *testing.T) {
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
 	}
+	addNodeAllocCapMockResults(mapResults, t, true)
 
 	qs := append(*rosContainerQueries, rosNamespaceFilter)
 	for _, query := range qs {
@@ -294,6 +312,7 @@ func TestGenerateReportsNoEnabledROS(t *testing.T) {
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
 	}
+	addNodeAllocCapMockResults(mapResults, t, true)
 
 	// add the namespace specific query
 	res := &model.Vector{}
@@ -342,6 +361,7 @@ func TestGenerateReportsNoCost(t *testing.T) {
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
 	}
+	addNodeAllocCapMockResults(mapResults, t, true)
 
 	qs := append(*rosContainerQueries, rosNamespaceFilter)
 	for _, query := range qs {
@@ -402,6 +422,7 @@ func TestGenerateReportsQueryErrors(t *testing.T) {
 				mapResults[query.QueryString] = &mockPromResult{value: *res}
 			}
 		}
+		addNodeAllocCapMockResults(mapResults, t, true)
 
 		// add the namespace specific query
 		res := &model.Vector{}
@@ -543,7 +564,22 @@ func TestGenerateReportsQueryErrors(t *testing.T) {
 		t.Errorf("GenerateReports %s was expected, got %v", gpuMaxSlicesError, err)
 	}
 
-	// Test node error
+	// Test node allocatable/capacity error
+	mapResults = setupTestData()
+	fakeCollector.PromConn = mockPrometheusConnection{
+		mappedResults: &mapResults,
+		t:             t,
+	}
+	nodeAllocCapError := "node alloc cap error"
+	for _, key := range nodeAllocCapMetricKeys {
+		mapResults[QueryMap[key]] = &mockPromResult{err: errors.New(nodeAllocCapError)}
+	}
+	err = GenerateReports(fakeCR, fakeDirCfg, fakeCollector)
+	if !strings.Contains(err.Error(), nodeAllocCapError) {
+		t.Errorf("GenerateReports %s was expected, got %v", nodeAllocCapError, err)
+	}
+
+	// Test node role/labels error
 	mapResults = setupTestData()
 	fakeCollector.PromConn = mockPrometheusConnection{
 		mappedResults: &mapResults,
@@ -587,6 +623,7 @@ func TestGenerateReportsNoNodeData(t *testing.T) {
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
 	}
+	addNodeAllocCapMockResults(mapResults, t, false)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -619,6 +656,7 @@ func TestGenerateReportsWriteErrors(t *testing.T) {
 			mapResults[query.QueryString] = &mockPromResult{value: *res}
 		}
 	}
+	addNodeAllocCapMockResults(mapResults, t, true)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{

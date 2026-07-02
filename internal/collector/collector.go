@@ -204,16 +204,23 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 
 	// ################################################################################################################
 	log.Info("querying for node metrics")
-	nodeResults := mappedResults{}
-	if err := c.getQueryRangeResults(nodeQueries, &nodeResults, MaxRetries); err != nil {
+
+	// Unified allocatable/capacity queries (2 instead of 6), pivoted by resource label
+	nodeResults, err := c.getNodeAllocCapRangeResults(MaxRetries)
+	if err != nil {
 		return err
 	}
 
 	if len(nodeResults) <= 0 {
 		log.Info("no data to report")
-		// there is no data for the hour queried. Return nothing
 		return ErrNoData
 	}
+
+	// Node-role, node-labels queries
+	if err := c.getQueryRangeResults(nodeQueries, &nodeResults, MaxRetries); err != nil {
+		return err
+	}
+
 	for node, val := range nodeResults {
 		resourceID := getResourceID(val["provider_id"])
 		nodeResults[node]["resource_id"] = resourceID
