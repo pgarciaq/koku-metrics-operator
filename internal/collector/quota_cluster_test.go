@@ -14,39 +14,13 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-var clusterQuotaQueryMapKeys = []string{
-	"ros:cluster_quota_cpu_request_hard",
-	"ros:cluster_quota_cpu_request_used",
-	"ros:cluster_quota_cpu_limit_hard",
-	"ros:cluster_quota_cpu_limit_used",
-	"ros:cluster_quota_memory_request_hard",
-	"ros:cluster_quota_memory_request_used",
-	"ros:cluster_quota_memory_limit_hard",
-	"ros:cluster_quota_memory_limit_used",
-	"ros:cluster_quota_storage_request_hard",
-	"ros:cluster_quota_storage_request_used",
-	"ros:cluster_quota_pods_hard",
-	"ros:cluster_quota_pods_used",
-	"ros:cluster_quota_object_count_hard",
-	"ros:cluster_quota_object_count_used",
+var clusterQuotaQueryMapKeys = append(rosClusterQuotaMetricKeys,
 	"ros:cluster_quota_namespace_members",
-}
+)
 
 var clusterQuotaQueryNames = []string{
-	"cluster-quota-cpu-request-hard",
-	"cluster-quota-cpu-request-used",
-	"cluster-quota-cpu-limit-hard",
-	"cluster-quota-cpu-limit-used",
-	"cluster-quota-memory-request-hard",
-	"cluster-quota-memory-request-used",
-	"cluster-quota-memory-limit-hard",
-	"cluster-quota-memory-limit-used",
-	"cluster-quota-storage-request-hard",
-	"cluster-quota-storage-request-used",
-	"cluster-quota-pods-hard",
-	"cluster-quota-pods-used",
-	"cluster-quota-object-count-hard",
-	"cluster-quota-object-count-used",
+	"cluster-quota-hard",
+	"cluster-quota-used",
 }
 
 var clusterQuotaCSVColumns = []string{
@@ -88,8 +62,8 @@ func TestQueryMap_ClusterQuotaQueries(t *testing.T) {
 			}
 			continue
 		}
-		if !strings.Contains(q, "sum by (name)") {
-			t.Errorf("QueryMap[%q] should group by name, got: %s", key, q)
+		if !strings.Contains(q, "sum by (name, resource)") {
+			t.Errorf("QueryMap[%q] should group by (name, resource), got: %s", key, q)
 		}
 	}
 }
@@ -238,5 +212,112 @@ func TestGenerateROSClusterQuotaReport_WithData(t *testing.T) {
 
 	if err := compareFiles(expectedInfo, generatedInfo); err != nil {
 		t.Errorf("cluster quota report does not match golden file: %v", err)
+	}
+}
+
+func TestPivotClusterQuotaResults(t *testing.T) {
+	t.Parallel()
+
+	raw := mappedResults{
+		"requests.cpu,team-a": mappedValues{
+			"cluster_quota_name": "team-a",
+			"resource_name":      "requests.cpu",
+			"hard_value":         "10",
+			"used_value":         "3",
+		},
+		"limits.cpu,team-a": mappedValues{
+			"cluster_quota_name": "team-a",
+			"resource_name":      "limits.cpu",
+			"hard_value":         "20",
+			"used_value":         "5",
+		},
+		"requests.memory,team-a": mappedValues{
+			"cluster_quota_name": "team-a",
+			"resource_name":      "requests.memory",
+			"hard_value":         "1073741824",
+			"used_value":         "536870912",
+		},
+		"limits.memory,team-a": mappedValues{
+			"cluster_quota_name": "team-a",
+			"resource_name":      "limits.memory",
+			"hard_value":         "2147483648",
+			"used_value":         "1073741824",
+		},
+	}
+
+	result := pivotClusterQuotaResults(raw)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 CRQ in pivot output, got %d", len(result))
+	}
+
+	row, ok := result["team-a"]
+	if !ok {
+		t.Fatal("pivot output missing key 'team-a'")
+	}
+
+	checks := map[string]string{
+		"cluster_quota_name":  "team-a",
+		"cpu-request-hard":    "10",
+		"cpu-request-used":    "3",
+		"cpu-limit-hard":      "20",
+		"cpu-limit-used":      "5",
+		"memory-request-hard": "1073741824",
+		"memory-request-used": "536870912",
+		"memory-limit-hard":   "2147483648",
+		"memory-limit-used":   "1073741824",
+	}
+
+	for field, want := range checks {
+		got, _ := row[field].(string)
+		if got != want {
+			t.Errorf("field %q: got %q, want %q", field, got, want)
+		}
+	}
+}
+
+func TestPivotClusterQuotaResults_ObjectCount(t *testing.T) {
+	t.Parallel()
+
+	raw := mappedResults{
+		"count/pods,team-b": mappedValues{
+			"cluster_quota_name": "team-b",
+			"resource_name":      "count/pods",
+			"hard_value":         "50",
+			"used_value":         "10",
+		},
+		"count/configmaps,team-b": mappedValues{
+			"cluster_quota_name": "team-b",
+			"resource_name":      "count/configmaps",
+			"hard_value":         "30",
+			"used_value":         "5",
+		},
+		"pods,team-b": mappedValues{
+			"cluster_quota_name": "team-b",
+			"resource_name":      "pods",
+			"hard_value":         "100",
+			"used_value":         "20",
+		},
+	}
+
+	result := pivotClusterQuotaResults(raw)
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 CRQ in pivot output, got %d", len(result))
+	}
+
+	row := result["team-b"]
+
+	if got, want := row["pods-hard"].(string), "100"; got != want {
+		t.Errorf("pods-hard: got %q, want %q", got, want)
+	}
+	if got, want := row["pods-used"].(string), "20"; got != want {
+		t.Errorf("pods-used: got %q, want %q", got, want)
+	}
+	if got, want := row["object-count-hard"].(string), floatToString(80); got != want {
+		t.Errorf("object-count-hard: got %q, want %q", got, want)
+	}
+	if got, want := row["object-count-used"].(string), floatToString(15); got != want {
+		t.Errorf("object-count-used: got %q, want %q", got, want)
 	}
 }
