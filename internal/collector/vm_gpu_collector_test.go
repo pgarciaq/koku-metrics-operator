@@ -46,6 +46,14 @@ func TestRosVMGpuQueriesUseVirtLauncherFilter(t *testing.T) {
 	}
 }
 
+func TestRosVMGpuQueriesGroupByUUID(t *testing.T) {
+	for _, q := range *rosVMGpuQueries {
+		if !strings.Contains(q.QueryString, "UUID") {
+			t.Errorf("query %q missing UUID in group-by clause", q.Name)
+		}
+	}
+}
+
 func TestMergeVMGPUIntoResults(t *testing.T) {
 	vmResults := mappedResults{
 		"k1": mappedValues{
