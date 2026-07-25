@@ -102,6 +102,14 @@ func collectVMQuarterHour(
 		return err
 	}
 
+	pvcResults := mappedResults{}
+	if err := c.getQueryResults(c.TimeSeries.End, rosVMPVCQueries, &pvcResults, MaxRetries); err != nil {
+		return err
+	}
+	if err := writeVMPVCReport(log, c, dirCfg, yearMonth, pvcResults); err != nil {
+		return err
+	}
+
 	return nil
 }
 
