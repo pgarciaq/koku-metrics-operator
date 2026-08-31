@@ -658,6 +658,12 @@ func generateResourceOptimizationReports(log gologr.Logger, c *PrometheusCollect
 		return err
 	}
 
+	joined := attachRosContainerGPUs(rosResults)
+	if dropped := countRosGPURows(rosResults) - countRosGPURows(joined); dropped > 0 {
+		log.Info(fmt.Sprintf("dropped %d ROS DCGM GPU rows with no matching kube container metrics", dropped))
+	}
+	rosResults = joined
+
 	rosRows := make(mappedCSVStruct)
 	for ros, val := range rosResults {
 		usage := newROSContainerRow(c.TimeSeries)

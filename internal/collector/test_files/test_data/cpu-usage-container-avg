@@ -166,5 +166,29 @@
 			1677009600,
 			"0"
 		]
+	},
+	{
+		"metric": {
+			"container": "gpu-workload",
+			"namespace": "gpu-test",
+			"node": "ip-10-0-150-20.us-east-2.compute.internal",
+			"pod": "gpu-pod-123"
+		},
+		"value": [
+			1677009600,
+			"0.25"
+		]
+	},
+	{
+		"metric": {
+			"container": "ml-training",
+			"namespace": "ai-project",
+			"node": "ip-10-0-150-20.us-east-2.compute.internal",
+			"pod": "training-pod-456"
+		},
+		"value": [
+			1677009600,
+			"0.40"
+		]
 	}
 ]

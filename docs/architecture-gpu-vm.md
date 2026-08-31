@@ -53,7 +53,7 @@ CSV columns are defined by [`nvidiaGpuRow.csvHeader()`](../internal/collector/ty
 | Downstream | ros-ocp-backend container recommendations (GPU-aware when DCGM profiling is available) |
 | Namespace filter | `cost_management_optimizations` or legacy `insights_cost_management_optimizations` label |
 
-GPU-related columns on [`rosContainerRow`](../internal/collector/types.go): `accelerator_model_name`, `accelerator_profile_name`, frame-buffer min/max/avg, `tensor_pipe_active_*`, `dram_active_*`, `sm_active_*`.
+GPU-related columns on [`rosContainerRow`](../internal/collector/types.go): `gpu_uuid`, `accelerator_model_name`, `accelerator_profile_name`, frame-buffer min/max/avg, `tensor_pipe_active_*`, `dram_active_*`, `sm_active_*`. After kube + DCGM join, a container with N distinct GPU UUIDs emits **N CSV rows** (cloned kube CPU/mem/identity + that device’s DCGM). DCGM samples with no matching kube container row are dropped.
 
 ### ROS — OpenShift Virtualization (VM)
 
@@ -118,7 +118,7 @@ Ensure the namespace monitor CR and operator pod selectors match your DCGM servi
 | Workload | Strategy | Notes |
 |----------|----------|-------|
 | **VM (KubeVirt)** | Per-device CSV | `ros-openshift-vm-gpu-device-*.csv` keyed by `gpu_uuid`; VM usage CSV aggregates `gpu_count` across UUIDs |
-| **Container (ROS)** | Single-stream | Queries group by one accelerator profile per container row; multi-GPU per pod is not split into separate rows (deferred) |
+| **Container (ROS)** | One row per distinct `gpu_uuid` | [`attachRosContainerGPUs`](../internal/collector/ros_container_gpu.go) clones the kube CPU/mem row per matching DCGM UUID. MIG slices that share a physical UUID stay one row (`gpu_count` 1). Unmatched DCGM is dropped. |
 | **Cost (pod)** | One row per GPU UUID (+ MIG instance) | Multiple GPUs on a pod produce multiple CSV rows |
 
 ## 6. Operator version matrix (CSV columns)
@@ -130,16 +130,15 @@ Ensure the namespace monitor CR and operator pod selectors match your DCGM servi
 | **4.4.0** | + `mig_instance_id`, `mig_profile`, `mig_strategy`, `gpu_max_slices` | (existing FB from 4.2.0) | — | — |
 | **4.4.1** | + `gpu_pod_utilization`; `honor_labels` fix; uptime fix | Unchanged | — | — |
 | **4.2.0** (ROS) | — | + `accelerator_*`, `tensor_pipe_*`, `dram_*`, `sm_active_*` | — | — |
-| **Phase 12 / HEAD** | Same as 4.4.1+ | Unchanged | + `gpu_*` on `ros-openshift-vm-usage` | + `ros-openshift-vm-gpu-device` |
+| **Phase 12 / HEAD** | Same as 4.4.1+ | Per-UUID join (`attachRosContainerGPUs`) | + `gpu_*` on `ros-openshift-vm-usage` | + `ros-openshift-vm-gpu-device` |
 
 Koku on-prem (`OCPGPUUsageLineItem`) aligns with operator **4.4.0+** MIG columns and **4.4.1+** `gpu_pod_utilization`. Older operator bundles without MIG columns still ingest; missing columns are added as null in the masu pipeline.
 
-## 7. Roadmap (items 1–3, future work)
+## 7. Roadmap (future work)
 
 The following are **not** implemented in the current MVP; they are tracked as follow-up work:
 
 1. **GPUs per node** — node-level GPU inventory/capacity reporting for cost and ROS (beyond pod/VM-attached usage).
-2. **Multi-GPU containers** — separate ROS rows or digests per GPU UUID for non-virt-launcher pods (today: single accelerator stream per container).
-3. **Broader profiling degradation** — explicit operator signaling when only FB metrics are available, surfaced in manifest or report metadata for downstream quality flags.
+2. **Broader profiling degradation** — explicit operator signaling when only FB metrics are available, surfaced in manifest or report metadata for downstream quality flags.
 
 For general operator architecture, see [`architecture.md`](architecture.md). For field-level CSV descriptions, see [`report-fields-description.md`](report-fields-description.md).

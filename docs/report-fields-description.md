@@ -183,6 +183,7 @@ Fields for metrics related to containers:
 * `memory_rss_usage_container_sum`: The total RSS memory usage for the container.
 * `accelerator_model_name`: The GPU Model which the workload is utilising.
 * `accelerator_profile_name`: The GPU partition which the workload is utilising.
+* `gpu_uuid`: The physical NVIDIA GPU UUID from DCGM. When a container uses multiple GPUs, the operator emits one ROS container row per distinct UUID (same kube CPU/mem/identity, that device’s DCGM). Empty when the container has no GPU.
 * `tensor_pipe_active_min`: The minimum tensor core pipe activity ratio (0.0-1.0) for a container. Requires Turing+ datacenter GPU with DCGM profiling metrics.
 * `tensor_pipe_active_max`: The maximum tensor core pipe activity ratio (0.0-1.0) for a container.
 * `tensor_pipe_active_avg`: The average tensor core pipe activity ratio (0.0-1.0) for a container.

@@ -151,7 +151,7 @@ GenerateReports(cr *MetricsConfig, dirCfg *DirectoryConfig, collector *Prometheu
 ```
 > Note: `MetricsConfig` here is a type alias for `CostManagementMetricsConfig`, used throughout the codebase for brevity.
 1. Query Prometheus for each metric type
-2. Process and aggregate results
+2. Process and aggregate results (ROS container reports join DCGM GPU samples onto kube CPU/mem rows; one CSV row per distinct `gpu_uuid`)
 3. Generate CSV files with prefixes:
    - `cm-openshift-pod-usage-*.csv`
    - `cm-openshift-node-usage-*.csv`
