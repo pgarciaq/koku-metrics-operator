@@ -1018,6 +1018,55 @@ spec:
                       type.
                     type: string
                 type: object
+              topology:
+                description: |-
+                  Topology holds observed cluster topology facts for HCP/fleet
+                  classification (W0, #406). It is embedded in manifest.json via cr_status.
+                properties:
+                  collectionError:
+                    description: |-
+                      CollectionError names the first unreadable API during collection
+                      (empty on success). Mirrors the Snapshot pattern.
+                    type: string
+                  controlPlaneTopology:
+                    description: |-
+                      ControlPlaneTopology is Infrastructure.status.controlPlaneTopology
+                      (e.g. HighlyAvailable, External, SingleReplica). Empty when unreadable.
+                      Free string on purpose: upstream may add modes we must not reject.
+                    type: string
+                  hostedClusterCount:
+                    description: |-
+                      HostedClusterCount is the number of HostedCluster objects visible to the
+                      operator. Zero on clusters without the HyperShift APIs.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  hostedControlPlaneNamespaces:
+                    description: |-
+                      HostedControlPlaneNamespaces lists namespaces labeled
+                      hypershift.openshift.io/hosted-control-plane=true, sorted. Empty is valid.
+                    items:
+                      type: string
+                    type: array
+                  managedByHypershift:
+                    description: |-
+                      ManagedByHypershift is true when the Infrastructure object carries the
+                      hypershift.openshift.io/managed label with value "true".
+                    type: boolean
+                  masterNodes:
+                    description: MasterNodes counts nodes bearing a master or control-plane
+                      role label.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  workerNodes:
+                    description: |-
+                      WorkerNodes counts nodes bearing the worker role label. Dual-labeled
+                      (compact) nodes increment both counters by design.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                type: object
               upload:
                 description: Upload is a field of CostManagementMetricsConfig to represent
                   the upload object.

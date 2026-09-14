@@ -467,6 +467,43 @@ type ReportsStatus struct {
 	DataCollectionMessage string `json:"data_collection_message,omitempty"`
 }
 
+// ClusterTopologyStatus defines observed cluster topology facts for HCP/fleet
+// classification (W0). Facts are best-effort: unreadable APIs yield empty
+// values plus CollectionError, never a reconcile failure.
+type ClusterTopologyStatus struct {
+
+	// ControlPlaneTopology is Infrastructure.status.controlPlaneTopology
+	// (e.g. HighlyAvailable, External, SingleReplica). Empty when unreadable.
+	// Free string on purpose: upstream may add modes we must not reject.
+	ControlPlaneTopology string `json:"controlPlaneTopology,omitempty"`
+
+	// ManagedByHypershift is true when the Infrastructure object carries the
+	// hypershift.openshift.io/managed label with value "true".
+	ManagedByHypershift bool `json:"managedByHypershift,omitempty"`
+
+	// HostedClusterCount is the number of HostedCluster objects visible to the
+	// operator. Zero on clusters without the HyperShift APIs.
+	// +kubebuilder:validation:Minimum=0
+	HostedClusterCount int32 `json:"hostedClusterCount,omitempty"`
+
+	// HostedControlPlaneNamespaces lists namespaces labeled
+	// hypershift.openshift.io/hosted-control-plane=true, sorted. Empty is valid.
+	HostedControlPlaneNamespaces []string `json:"hostedControlPlaneNamespaces,omitempty"`
+
+	// MasterNodes counts nodes bearing a master or control-plane role label.
+	// +kubebuilder:validation:Minimum=0
+	MasterNodes int32 `json:"masterNodes,omitempty"`
+
+	// WorkerNodes counts nodes bearing the worker role label. Dual-labeled
+	// (compact) nodes increment both counters by design.
+	// +kubebuilder:validation:Minimum=0
+	WorkerNodes int32 `json:"workerNodes,omitempty"`
+
+	// CollectionError names the first unreadable API during collection
+	// (empty on success). Mirrors the Snapshot pattern.
+	CollectionError string `json:"collectionError,omitempty"`
+}
+
 // SnapshotCollectionStatus defines the status for VolumeSnapshot inventory collection.
 type SnapshotCollectionStatus struct {
 
@@ -537,6 +574,11 @@ type CostManagementMetricsConfigStatus struct {
 	// Snapshot represents the status of VolumeSnapshot inventory collection.
 	// +optional
 	Snapshot SnapshotCollectionStatus `json:"snapshot,omitempty"`
+
+	// Topology holds observed cluster topology facts for HCP/fleet
+	// classification (W0, #406). It is embedded in manifest.json via cr_status.
+	// +optional
+	Topology ClusterTopologyStatus `json:"topology,omitempty"`
 
 	// PersistentVolumeClaim is a field of CostManagementMetricsConfig to represent a PVC.
 	PersistentVolumeClaim *EmbeddedPersistentVolumeClaim `json:"persistent_volume_claim,omitempty"`
