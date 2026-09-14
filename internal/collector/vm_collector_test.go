@@ -425,6 +425,7 @@ func buildVMRosMockPromResults(t *testing.T) mappedMockPromResult {
 	}
 	addVMGpuMockResults(m)
 	addVMPodVMIMockResults(m)
+	addVMPVCMockResults(m)
 	return m
 }
 
@@ -436,6 +437,12 @@ func addVMGpuMockResults(m mappedMockPromResult) {
 
 func addVMPodVMIMockResults(m mappedMockPromResult) {
 	for _, q := range *rosVMPodVMINameQueries {
+		m[q.QueryString] = &mockPromResult{value: model.Vector{}}
+	}
+}
+
+func addVMPVCMockResults(m mappedMockPromResult) {
+	for _, q := range *rosVMPVCQueries {
 		m[q.QueryString] = &mockPromResult{value: model.Vector{}}
 	}
 }
