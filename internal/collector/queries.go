@@ -883,7 +883,7 @@ var (
 		query{
 			Name:        "accelerator-frame-buffer-usage-min",
 			QueryString: QueryMap["ros:accelerator_frame_buffer_usage_min"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "accelerator-frame-buffer-usage-min",
 			},
@@ -892,7 +892,7 @@ var (
 		query{
 			Name:        "accelerator-frame-buffer-usage-max",
 			QueryString: QueryMap["ros:accelerator_frame_buffer_usage_max"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "accelerator-frame-buffer-usage-max",
 			},
@@ -901,7 +901,7 @@ var (
 		query{
 			Name:        "accelerator-frame-buffer-usage-avg",
 			QueryString: QueryMap["ros:accelerator_frame_buffer_usage_avg"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "accelerator-frame-buffer-usage-avg",
 			},
@@ -910,7 +910,7 @@ var (
 		query{
 			Name:        "tensor-pipe-active-min",
 			QueryString: QueryMap["ros:tensor_pipe_active_min"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "tensor-pipe-active-min",
 			},
@@ -919,7 +919,7 @@ var (
 		query{
 			Name:        "tensor-pipe-active-max",
 			QueryString: QueryMap["ros:tensor_pipe_active_max"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "tensor-pipe-active-max",
 			},
@@ -928,7 +928,7 @@ var (
 		query{
 			Name:        "tensor-pipe-active-avg",
 			QueryString: QueryMap["ros:tensor_pipe_active_avg"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "tensor-pipe-active-avg",
 			},
@@ -937,7 +937,7 @@ var (
 		query{
 			Name:        "dram-active-min",
 			QueryString: QueryMap["ros:dram_active_min"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "dram-active-min",
 			},
@@ -946,7 +946,7 @@ var (
 		query{
 			Name:        "dram-active-max",
 			QueryString: QueryMap["ros:dram_active_max"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "dram-active-max",
 			},
@@ -955,7 +955,7 @@ var (
 		query{
 			Name:        "dram-active-avg",
 			QueryString: QueryMap["ros:dram_active_avg"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "dram-active-avg",
 			},
@@ -964,7 +964,7 @@ var (
 		query{
 			Name:        "sm-active-min",
 			QueryString: QueryMap["ros:sm_active_min"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "sm-active-min",
 			},
@@ -973,7 +973,7 @@ var (
 		query{
 			Name:        "sm-active-max",
 			QueryString: QueryMap["ros:sm_active_max"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "sm-active-max",
 			},
@@ -982,7 +982,7 @@ var (
 		query{
 			Name:        "sm-active-avg",
 			QueryString: QueryMap["ros:sm_active_avg"],
-			MetricKey: rosDCGMContainerMetricKey,
+			MetricKey:   rosDCGMContainerMetricKey,
 			QueryValue: &saveQueryValue{
 				ValName: "sm-active-avg",
 			},
