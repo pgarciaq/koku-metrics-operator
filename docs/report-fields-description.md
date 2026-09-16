@@ -7,12 +7,13 @@ This document provides an outline of the fields included in the collected usage 
 
 * The [Prometheus queries](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/queries.go) that the operator uses to collect metrics are detailed in the linked file.
 
-* To enable the collection ROS (Resource Optimization) metrics, ensure that the namespaces are labeled with `cost_management_optimizations='true'`. Note in operator versions below 4.1.0 you must use the label `insights_cost_management_optimizations='true'`.
+* To enable the collection ROS (Resource Optimization) metrics, ensure that the namespaces are labeled with `cost_management_optimizations='true'`. Note in operator versions below 4.1.0 you must use the label `insights_cost_management_optimizations='true'`. Namespaces labeled `hypershift.openshift.io/hosted-control-plane='true'` (HyperShift hosted control planes) are collected automatically with no manual label.
 
     * Queries responsible for collecting ROS metrics are identified in the `QueryMap` with the prefix `ros:` and include a specific filter to target the appropriately labeled namespaces:
         ```
         kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'}
         ```
+        plus the equivalent `hypershift.openshift.io/hosted-control-plane` arm. VM collection queries are cluster-wide by design and carry no namespace filter.
 
 
 ### Common Fields
