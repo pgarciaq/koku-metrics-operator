@@ -769,9 +769,9 @@ func (r *MetricsConfigReconciler) setAuthAndUpload(ctx context.Context, cr *metr
 // +kubebuilder:rbac:groups=core,namespace=koku-metrics-operator,resources=pods;services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets;serviceaccounts,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=apps,namespace=koku-metrics-operator,resources=deployments,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheuses/api,verbs=get;create;update
-// +kubebuilder:rbac:groups=config.openshift.io,resources=infrastructures,verbs=get;list
-// +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list
-// +kubebuilder:rbac:groups=hypershift.openshift.io,resources=hostedclusters,verbs=get;list
+// +kubebuilder:rbac:groups=config.openshift.io,resources=infrastructures,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups=hypershift.openshift.io,resources=hostedclusters,verbs=get;list;watch
 
 // Reconcile Process the MetricsConfig custom resource based on changes or requeue
 func (r *MetricsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

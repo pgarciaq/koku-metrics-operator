@@ -9,6 +9,7 @@ rules:
   resources:
   - configmaps
   - namespaces
+  - nodes
   verbs:
   - get
   - list
@@ -16,7 +17,6 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - nodes
   - persistentvolumeclaims
   verbs:
   - get
@@ -31,17 +31,11 @@ rules:
   - config.openshift.io
   resources:
   - clusterversions
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - config.openshift.io
-  resources:
   - infrastructures
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - hypershift.openshift.io
   resources:
@@ -49,6 +43,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - instancetype.kubevirt.io
   resources:
