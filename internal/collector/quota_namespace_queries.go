@@ -22,7 +22,7 @@ func unifiedNamespaceQuotaQuery(quotaType string) string {
 	return `(sum by (namespace, resourcequota, resource) (kube_resourcequota{type='` + quotaType + `'})` +
 		` * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'}` +
 		` or sum by (namespace, resourcequota, resource) (kube_resourcequota{type='` + quotaType + `'})` +
-		` * on(namespace) group_left (kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or kube_namespace_labels{label_hypershift_openshift_io_hosted_control_plane='true', namespace!~'kube-.*|openshift|openshift-.*'}))`
+		` * on(namespace) group_left() (kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or kube_namespace_labels{label_hypershift_openshift_io_hosted_control_plane='true', namespace!~'kube-.*|openshift|openshift-.*'}))`
 }
 
 // rosNamespaceQuotaMetricKeys are QueryMap entries for unified ResourceQuota hard/used metrics.

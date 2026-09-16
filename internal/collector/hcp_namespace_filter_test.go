@@ -6,6 +6,7 @@
 package collector
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -59,5 +60,27 @@ func TestRosQueriesIncludeHypershiftNamespaces(t *testing.T) {
 	}
 	if missing != 0 {
 		t.Errorf("%d gated ROS queries lack the hypershift namespace selector", missing)
+	}
+}
+
+// TestRosQueriesGroupLeftSyntax guards the exact failure mode hit during
+// implementation: `group_left (...)` with a space reads `(...)` as grouping
+// options, so a parenthesized selector union there is a parse error — the
+// empty form `group_left()` is required. Legitimate `group_left(label, ...)`
+// groupings are unaffected.
+func TestRosQueriesGroupLeftSyntax(t *testing.T) {
+	bad := regexp.MustCompile(`group_left\s*\(\s*[{(]`)
+	checked := 0
+	for key, q := range QueryMap {
+		if !strings.HasPrefix(key, "ros:") {
+			continue
+		}
+		checked++
+		if bad.MatchString(q) {
+			t.Errorf("query %s: group_left followed by ( must be grouping labels, not a selector union (use group_left())", key)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected ros queries to inspect")
 	}
 }
