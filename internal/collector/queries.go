@@ -58,7 +58,7 @@ var (
 		"ros:vm_disk_write_bytes_per_sec":  "sum by (name, namespace, node) (rate(kubevirt_vmi_storage_write_traffic_bytes_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 		"ros:vm_info":                      "max by (name, namespace, node, os) (kubevirt_vmi_info{phase='running', name!='', namespace!=''})",
 		// ROS VM crash-loop signal: phase transitions into Running per collection step (see vm-ros-restart-count).
-		"ros:vm_restart_count":          "sum by (name, namespace, node) (clamp_min(changes(kubevirt_vmi_phase_transition_time_seconds{phase='Running', name!='', namespace!=''}[STEP]) - 1, 0)) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
+		"ros:vm_restart_count":          "sum by (name, namespace, node) (clamp_min(changes(kubevirt_vmi_phase_transition_time_seconds{phase='Running', name!='', namespace!=''}[15m]) - 1, 0)) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 		"ros:vm_net_rx_bytes_per_sec":   "sum by (name, namespace, node) (rate(kubevirt_vmi_network_receive_bytes_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 		"ros:vm_net_tx_bytes_per_sec":   "sum by (name, namespace, node) (rate(kubevirt_vmi_network_transmit_bytes_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
 		"ros:vm_net_rx_packets_per_sec": "sum by (name, namespace, node) (rate(kubevirt_vmi_network_receive_packets_total{name!='', namespace!=''}[5m])) * on (name, namespace, node) group_left() max by (name, namespace, node) (kubevirt_vmi_info{phase='running'})",
@@ -70,13 +70,13 @@ var (
 		"ros:vm_pod_vmi_name": `max by (pod, namespace, label_vm_kubevirt_io_name) (kube_pod_labels{pod=~"virt-launcher-.*", label_vm_kubevirt_io_name!=""})`,
 
 		// ROS VM GPU metrics (virt-launcher pods only; correlated to VMIs via kube_pod_labels or pod name)
-		"ros:vm_gpu_utilization_avg":   `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{exported_pod=~"virt-launcher-.*"}[STEP]))`,
-		"ros:vm_gpu_utilization_max":   `max by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (max_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{exported_pod=~"virt-launcher-.*"}[STEP]))`,
-		"ros:vm_gpu_fb_used_avg":       `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_DEV_FB_USED{exported_pod=~"virt-launcher-.*"}[STEP]))`,
-		"ros:vm_gpu_fb_used_max":       `max by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (max_over_time(DCGM_FI_DEV_FB_USED{exported_pod=~"virt-launcher-.*"}[STEP]))`,
-		"ros:vm_gpu_sm_active_avg":     `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_pod=~"virt-launcher-.*"}[STEP]))`,
-		"ros:vm_gpu_tensor_active_avg": `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_pod=~"virt-launcher-.*"}[STEP]))`,
-		"ros:vm_gpu_dram_active_avg":   `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_pod=~"virt-launcher-.*"}[STEP]))`,
+		"ros:vm_gpu_utilization_avg":   `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{exported_pod=~"virt-launcher-.*"}[15m]))`,
+		"ros:vm_gpu_utilization_max":   `max by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (max_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE{exported_pod=~"virt-launcher-.*"}[15m]))`,
+		"ros:vm_gpu_fb_used_avg":       `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_DEV_FB_USED{exported_pod=~"virt-launcher-.*"}[15m]))`,
+		"ros:vm_gpu_fb_used_max":       `max by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (max_over_time(DCGM_FI_DEV_FB_USED{exported_pod=~"virt-launcher-.*"}[15m]))`,
+		"ros:vm_gpu_sm_active_avg":     `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_SM_ACTIVE{exported_pod=~"virt-launcher-.*"}[15m]))`,
+		"ros:vm_gpu_tensor_active_avg": `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_PIPE_TENSOR_ACTIVE{exported_pod=~"virt-launcher-.*"}[15m]))`,
+		"ros:vm_gpu_dram_active_avg":   `avg by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (avg_over_time(DCGM_FI_PROF_DRAM_ACTIVE{exported_pod=~"virt-launcher-.*"}[15m]))`,
 		"ros:vm_gpu_max_slices":        `max by (exported_pod, exported_namespace, Hostname, modelName, GPU_I_ID, GPU_I_PROFILE, UUID) (DCGM_FI_DEV_MIG_MAX_SLICES{exported_pod=~"virt-launcher-.*"})`,
 
 		// cost NVIDIA GPU metrics queries, including MIG
