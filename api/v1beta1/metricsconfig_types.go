@@ -467,6 +467,33 @@ type ReportsStatus struct {
 	DataCollectionMessage string `json:"data_collection_message,omitempty"`
 }
 
+// HCPSnapshotEntry pins one HCP namespace to one hosted incarnation as
+// observed live at collection time. UIDs establish incarnation so a recreated
+// HostedCluster reusing a namespace name cannot inherit history. Entries with
+// Complete=false (or empty HostedClusterID) must not associate
+// recommendations; Diagnostics names the failed read.
+type HCPSnapshotEntry struct {
+	// HCPNamespace is the management-cluster namespace serving the HC.
+	HCPNamespace string `json:"hcpNamespace"`
+	// HostedClusterID is HostedCluster spec.clusterID, cross-checked against
+	// exactly one live HostedCluster. Empty means unproven.
+	HostedClusterID string `json:"hostedClusterID,omitempty"`
+	// HcUID is the HostedCluster object UID (incarnation signal).
+	HcUID string `json:"hcUID,omitempty"`
+	// HcpUID is the HostedControlPlane object UID (incarnation signal).
+	HcpUID string `json:"hcpUID,omitempty"`
+	// NamespaceUID is the HCP Namespace object UID (recreation signal).
+	NamespaceUID string `json:"namespaceUID,omitempty"`
+	// NamespaceCreatedAt is the HCP Namespace creation time (RFC3339).
+	NamespaceCreatedAt string `json:"namespaceCreatedAt,omitempty"`
+	// ObservedAt is the collection observation time (RFC3339).
+	ObservedAt string `json:"observedAt,omitempty"`
+	// Complete is false when any required inventory read failed.
+	Complete bool `json:"complete,omitempty"`
+	// Diagnostics names the failed reads for incomplete entries.
+	Diagnostics string `json:"diagnostics,omitempty"`
+}
+
 // ClusterTopologyStatus defines observed cluster topology facts for HCP/fleet
 // classification (W0). Facts are best-effort: unreadable APIs yield empty
 // values plus CollectionError, never a reconcile failure.
@@ -489,6 +516,13 @@ type ClusterTopologyStatus struct {
 	// HostedControlPlaneNamespaces lists namespaces labeled
 	// hypershift.openshift.io/hosted-control-plane=true, sorted. Empty is valid.
 	HostedControlPlaneNamespaces []string `json:"hostedControlPlaneNamespaces,omitempty"`
+
+	// HCPSnapshot carries the report-scoped namespace-to-HostedCluster mapping
+	// (#622/#633). One entry per labeled HCP namespace, sorted by namespace.
+	// Empty on clusters without the HyperShift APIs and on pre-snapshot
+	// operators. Backend field names are handshake-critical (see the JSON
+	// contract test): renames must update both sides plus the shared fixture.
+	HCPSnapshot []HCPSnapshotEntry `json:"hcpSnapshot,omitempty"`
 
 	// MasterNodes counts nodes bearing a master or control-plane role label.
 	// +kubebuilder:validation:Minimum=0

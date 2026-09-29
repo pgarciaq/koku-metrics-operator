@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -40,6 +41,14 @@ var hostedClusterListGVK = schema.GroupVersionKind{
 	Group:   "hypershift.openshift.io",
 	Version: "v1beta1",
 	Kind:    "HostedClusterList",
+}
+
+// hostedControlPlaneListGVK identifies HostedControlPlane objects without
+// vendoring the HyperShift API (same shapeless pattern as HostedClusters).
+var hostedControlPlaneListGVK = schema.GroupVersionKind{
+	Group:   "hypershift.openshift.io",
+	Version: "v1beta1",
+	Kind:    "HostedControlPlaneList",
 }
 
 // buildTopologyStatus folds already-fetched cluster facts into status.
@@ -74,9 +83,114 @@ func isMissingAPIError(err error) bool {
 	return apimeta.IsNoMatchError(err) || apierrors.IsNotFound(err)
 }
 
-// listHostedClusterNames returns HostedCluster names across all namespaces.
-// Clusters without the HyperShift CRDs yield an empty list and no error.
-func listHostedClusterNames(ctx context.Context, c client.Client) ([]string, error) {
+// hcpObserved, hcObserved, and nsObserved are client-free snapshots of the
+// objects buildHCPSnapshot reasons over: plain scalars so the mapping rule
+// stays unit-testable without a fake API server.
+type hcpObserved struct {
+	Namespace string
+	Name      string
+	UID       string
+	ClusterID string
+}
+
+type hcObserved struct {
+	Namespace string
+	Name      string
+	UID       string
+	ClusterID string
+}
+
+type nsObserved struct {
+	UID       string
+	CreatedAt string
+}
+
+// buildHCPSnapshot maps each labeled HCP namespace to its hosted incarnation
+// (#633). Output is sorted by namespace for deterministic manifests. Every
+// ambiguity fails closed to an incomplete entry naming the cause: the
+// namespace count or HCP object count differing from one, an empty
+// spec.clusterID, or a live HostedCluster count for that ID differing from
+// one. Name patterns, infraID, and infrastructureName are never identity.
+func buildHCPSnapshot(hcps []hcpObserved, hcs []hcObserved, nsInfos map[string]nsObserved, labeledNS []string, observedAt string) []metricscfgv1beta1.HCPSnapshotEntry {
+	byNS := make(map[string][]hcpObserved)
+	for _, h := range hcps {
+		byNS[h.Namespace] = append(byNS[h.Namespace], h)
+	}
+	byClusterID := make(map[string][]hcObserved)
+	for _, h := range hcs {
+		if h.ClusterID == "" {
+			continue
+		}
+		byClusterID[h.ClusterID] = append(byClusterID[h.ClusterID], h)
+	}
+	sorted := append([]string(nil), labeledNS...)
+	sort.Strings(sorted)
+	out := make([]metricscfgv1beta1.HCPSnapshotEntry, 0, len(sorted))
+	for _, ns := range sorted {
+		entry := metricscfgv1beta1.HCPSnapshotEntry{HCPNamespace: ns, ObservedAt: observedAt}
+		info, ok := nsInfos[ns]
+		if !ok {
+			entry.Diagnostics = "namespace vanished between list and snapshot"
+			out = append(out, entry)
+			continue
+		}
+		entry.NamespaceUID = info.UID
+		entry.NamespaceCreatedAt = info.CreatedAt
+		inNS := byNS[ns]
+		if len(inNS) != 1 {
+			entry.Diagnostics = fmt.Sprintf("expected 1 HostedControlPlane in namespace, found %d", len(inNS))
+			out = append(out, entry)
+			continue
+		}
+		if inNS[0].ClusterID == "" {
+			entry.Diagnostics = fmt.Sprintf("HostedControlPlane %s has empty spec.clusterID", inNS[0].Name)
+			out = append(out, entry)
+			continue
+		}
+		matches := byClusterID[inNS[0].ClusterID]
+		if len(matches) != 1 {
+			entry.Diagnostics = fmt.Sprintf("expected 1 live HostedCluster for clusterID, found %d", len(matches))
+			out = append(out, entry)
+			continue
+		}
+		entry.HostedClusterID = inNS[0].ClusterID
+		entry.HcUID = matches[0].UID
+		entry.HcpUID = inNS[0].UID
+		entry.Complete = true
+		out = append(out, entry)
+	}
+	return out
+}
+
+// listHCPObserved lists HostedControlPlane objects (namespace, name, UID,
+// spec.clusterID). Missing APIs yield empty + nil (pre-HyperShift); any other
+// error propagates for the caller to degrade.
+func listHCPObserved(ctx context.Context, c client.Client) ([]hcpObserved, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(hostedControlPlaneListGVK)
+	if err := c.List(ctx, list); err != nil {
+		if isMissingAPIError(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list hostedcontrolplanes: %w", err)
+	}
+	out := make([]hcpObserved, 0, len(list.Items))
+	for i := range list.Items {
+		obj := &list.Items[i]
+		clusterID, _, _ := unstructured.NestedString(obj.Object, "spec", "clusterID")
+		out = append(out, hcpObserved{
+			Namespace: obj.GetNamespace(),
+			Name:      obj.GetName(),
+			UID:       string(obj.GetUID()),
+			ClusterID: clusterID,
+		})
+	}
+	return out, nil
+}
+
+// listHCObserved lists HostedCluster objects (namespace, name, UID,
+// spec.clusterID) with the same missing-API posture as listHCPObserved.
+func listHCObserved(ctx context.Context, c client.Client) ([]hcObserved, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(hostedClusterListGVK)
 	if err := c.List(ctx, list); err != nil {
@@ -85,11 +199,18 @@ func listHostedClusterNames(ctx context.Context, c client.Client) ([]string, err
 		}
 		return nil, fmt.Errorf("list hostedclusters: %w", err)
 	}
-	names := make([]string, 0, len(list.Items))
+	out := make([]hcObserved, 0, len(list.Items))
 	for i := range list.Items {
-		names = append(names, list.Items[i].GetName())
+		obj := &list.Items[i]
+		clusterID, _, _ := unstructured.NestedString(obj.Object, "spec", "clusterID")
+		out = append(out, hcObserved{
+			Namespace: obj.GetNamespace(),
+			Name:      obj.GetName(),
+			UID:       string(obj.GetUID()),
+			ClusterID: clusterID,
+		})
 	}
-	return names, nil
+	return out, nil
 }
 
 // collectClusterTopology reads cluster topology facts with single LISTs (no
@@ -109,12 +230,13 @@ func collectClusterTopology(ctx context.Context, c client.Client) metricscfgv1be
 		collectionError = fmt.Sprintf("nodes: %v", err)
 	}
 
-	hcNames, err := listHostedClusterNames(ctx, c)
+	hcObjs, err := listHCObserved(ctx, c)
 	if err != nil && collectionError == "" {
 		collectionError = fmt.Sprintf("hostedclusters.hypershift.openshift.io: %v", err)
 	}
 
 	var hcpNamespaces []string
+	nsInfos := make(map[string]nsObserved)
 	nsList := &corev1.NamespaceList{}
 	if err := c.List(ctx, nsList, client.MatchingLabels{hcpNamespaceLabel: labelTrueValue}); err != nil {
 		if collectionError == "" {
@@ -123,11 +245,46 @@ func collectClusterTopology(ctx context.Context, c client.Client) metricscfgv1be
 	} else {
 		for i := range nsList.Items {
 			hcpNamespaces = append(hcpNamespaces, nsList.Items[i].Name)
+			nsInfos[nsList.Items[i].Name] = nsObserved{
+				UID:       string(nsList.Items[i].UID),
+				CreatedAt: nsList.Items[i].CreationTimestamp.UTC().Format(time.RFC3339),
+			}
 		}
 		sort.Strings(hcpNamespaces)
 	}
 
-	status := buildTopologyStatus(infra, nodeList.Items, len(hcNames), hcpNamespaces)
+	// Snapshot emission (#633): same never-fail posture. A missing HCP API
+	// (pre-HyperShift) means no snapshot; any other LIST error degrades each
+	// labeled namespace to an incomplete entry naming the cause.
+	var snapshot []metricscfgv1beta1.HCPSnapshotEntry
+	if len(hcpNamespaces) > 0 {
+		hcpObjs, hcpErr := listHCPObserved(ctx, c)
+		if hcpErr != nil {
+			if isMissingAPIError(hcpErr) {
+				hcpObjs = nil
+			} else {
+				if collectionError == "" {
+					collectionError = fmt.Sprintf("hostedcontrolplanes.hypershift.openshift.io: %v", hcpErr)
+				}
+				for _, ns := range hcpNamespaces {
+					info := nsInfos[ns]
+					snapshot = append(snapshot, metricscfgv1beta1.HCPSnapshotEntry{
+						HCPNamespace:       ns,
+						NamespaceUID:       info.UID,
+						NamespaceCreatedAt: info.CreatedAt,
+						ObservedAt:         time.Now().UTC().Format(time.RFC3339),
+						Diagnostics:        fmt.Sprintf("HostedControlPlane list failed: %v", hcpErr),
+					})
+				}
+			}
+		}
+		if snapshot == nil && hcpErr == nil {
+			snapshot = buildHCPSnapshot(hcpObjs, hcObjs, nsInfos, hcpNamespaces, time.Now().UTC().Format(time.RFC3339))
+		}
+	}
+
+	status := buildTopologyStatus(infra, nodeList.Items, len(hcObjs), hcpNamespaces)
+	status.HCPSnapshot = snapshot
 	status.CollectionError = collectionError
 	return status
 }

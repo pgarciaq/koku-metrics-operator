@@ -1034,6 +1034,62 @@ spec:
                       (e.g. HighlyAvailable, External, SingleReplica). Empty when unreadable.
                       Free string on purpose: upstream may add modes we must not reject.
                     type: string
+                  hcpSnapshot:
+                    description: |-
+                      HCPSnapshot carries the report-scoped namespace-to-HostedCluster mapping
+                      (#622/#633). One entry per labeled HCP namespace, sorted by namespace.
+                      Empty on clusters without the HyperShift APIs and on pre-snapshot
+                      operators. Backend field names are handshake-critical (see the JSON
+                      contract test): renames must update both sides plus the shared fixture.
+                    items:
+                      description: |-
+                        HCPSnapshotEntry pins one HCP namespace to one hosted incarnation as
+                        observed live at collection time. UIDs establish incarnation so a recreated
+                        HostedCluster reusing a namespace name cannot inherit history. Entries with
+                        Complete=false (or empty HostedClusterID) must not associate
+                        recommendations; Diagnostics names the failed read.
+                      properties:
+                        complete:
+                          description: Complete is false when any required inventory
+                            read failed.
+                          type: boolean
+                        diagnostics:
+                          description: Diagnostics names the failed reads for incomplete
+                            entries.
+                          type: string
+                        hcUID:
+                          description: HcUID is the HostedCluster object UID (incarnation
+                            signal).
+                          type: string
+                        hcpNamespace:
+                          description: HCPNamespace is the management-cluster namespace
+                            serving the HC.
+                          type: string
+                        hcpUID:
+                          description: HcpUID is the HostedControlPlane object UID
+                            (incarnation signal).
+                          type: string
+                        hostedClusterID:
+                          description: |-
+                            HostedClusterID is HostedCluster spec.clusterID, cross-checked against
+                            exactly one live HostedCluster. Empty means unproven.
+                          type: string
+                        namespaceCreatedAt:
+                          description: NamespaceCreatedAt is the HCP Namespace creation
+                            time (RFC3339).
+                          type: string
+                        namespaceUID:
+                          description: NamespaceUID is the HCP Namespace object UID
+                            (recreation signal).
+                          type: string
+                        observedAt:
+                          description: ObservedAt is the collection observation time
+                            (RFC3339).
+                          type: string
+                      required:
+                      - hcpNamespace
+                      type: object
+                    type: array
                   hostedClusterCount:
                     description: |-
                       HostedClusterCount is the number of HostedCluster objects visible to the

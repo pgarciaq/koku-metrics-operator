@@ -40,6 +40,7 @@ rules:
   - hypershift.openshift.io
   resources:
   - hostedclusters
+  - hostedcontrolplanes
   verbs:
   - get
   - list

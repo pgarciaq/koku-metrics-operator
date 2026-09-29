@@ -430,6 +430,11 @@ $(KUSTOMIZE): $(LOCALBIN)
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary. If wrong version is installed, it will be overwritten.
+# WARNING (2026-09-29, #633): regenerating with the pinned v0.20.0 deleted the
+# root DeepCopyObject funcs from api/v1beta1/zz_generated.deepcopy.go (490
+# deletions) while bases/role output looked correct. Always inspect
+# `git diff --stat api/v1beta1/zz_generated.deepcopy.go` after generate and
+# revert hunks outside your own types before committing.
 $(CONTROLLER_GEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/controller-gen && $(LOCALBIN)/controller-gen --version | grep -q $(CONTROLLER_TOOLS_VERSION) || \
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
