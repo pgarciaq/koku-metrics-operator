@@ -333,6 +333,12 @@ Verb groups (API verbs, regexes baked in; `WATCH`/`CONNECT`/`PROXY` excluded at 
 * `read` — `GET|LIST`
 * `other` — residual verbs excluding all of the above plus `WATCH|CONNECT|PROXY`
 
+`le` boundaries are canonicalized to float form and float-equal boundaries are
+summed: different apiserver jobs emit string-distinct but float-equal
+boundaries (`8` vs `8.0`; live 2026-09-30 the read group carried two
+interleaved progressions), which would otherwise collide in the backend float
+primary key. The merged progressions stay cumulative-monotonic.
+
 | Field | Description |
 |-------|-------------|
 | `hc_cluster_id` | Hosted cluster ID (`Status.ClusterID`, the local ClusterVersion ID); empty ID skips the file |

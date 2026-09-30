@@ -102,35 +102,79 @@ func formatSLOCount(raw interface{}) (string, bool) {
 	return strconv.FormatInt(int64(math.Round(f)), 10), true
 }
 
+// canonicalSLOLe normalizes an le label to a canonical float string so that
+// string-distinct but float-equal boundaries ("8" vs "8.0", emitted by
+// different apiserver jobs) merge instead of colliding. Live lab 2026-09-30:
+// the read group carried two interleaved progressions converging to 93245 and
+// 3357446; without merging, the backend DOUBLE PRECISION PK keeps whichever
+// upsert lands last. "+Inf" (any case) canonicalizes to "+Inf".
+func canonicalSLOLe(raw string) (string, bool) {
+	s := strings.TrimSpace(raw)
+	if strings.EqualFold(s, "+inf") || strings.EqualFold(s, "inf") || s == "+Infinity" {
+		return "+Inf", true
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
+		return "", false
+	}
+	return strconv.FormatFloat(f, 'g', -1, 64), true
+}
+
 // buildSLORows pivots per-le query results into contract rows, one per
 // (verb_group, le) with a present count. Groups with no series for an le are
-// omitted (incomplete windows omitted). collectedAt is the per-cycle snapshot
-// time; the backend buckets hourly and upserts idempotently.
+// omitted (incomplete windows omitted). Counts for float-equal boundaries are
+// summed (cumulative disjoint apiserver progressions add; the sum of
+// non-decreasing progressions is non-decreasing). collectedAt is the
+// per-cycle snapshot time; the backend buckets hourly and upserts
+// idempotently.
 func buildSLORows(results mappedResults, hcClusterID string, windowStart, windowEnd, collectedAt string) []sloRow {
-	var rows []sloRow
+	type key struct{ group, le string }
+	type accum struct {
+		le    string
+		count int64
+	}
+	merged := map[key]*accum{}
+	var order []key
 	for leKey, val := range results {
 		le, _ := val["le"].(string)
 		if le == "" {
 			le = leKey
 		}
-		if le == "" {
+		canon, ok := canonicalSLOLe(le)
+		if !ok {
 			continue
 		}
 		for _, g := range sloVerbGroups {
-			count, ok := formatSLOCount(val[g.valName])
+			countStr, ok := formatSLOCount(val[g.valName])
 			if !ok {
 				continue
 			}
-			rows = append(rows, sloRow{
-				HCClusterID: hcClusterID,
-				WindowStart: windowStart,
-				WindowEnd:   windowEnd,
-				VerbGroup:   g.group,
-				Le:          le,
-				BucketCount: count,
-				CollectedAt: collectedAt,
-			})
+			count, err := strconv.ParseInt(countStr, 10, 64)
+			if err != nil {
+				continue
+			}
+			k := key{g.group, canon}
+			a, dup := merged[k]
+			if !dup {
+				a = &accum{le: canon}
+				merged[k] = a
+				order = append(order, k)
+			}
+			a.count += count
 		}
+	}
+	rows := make([]sloRow, 0, len(order))
+	for _, k := range order {
+		a := merged[k]
+		rows = append(rows, sloRow{
+			HCClusterID: hcClusterID,
+			WindowStart: windowStart,
+			WindowEnd:   windowEnd,
+			VerbGroup:   k.group,
+			Le:          a.le,
+			BucketCount: strconv.FormatInt(a.count, 10),
+			CollectedAt: collectedAt,
+		})
 	}
 	return rows
 }

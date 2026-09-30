@@ -330,3 +330,41 @@ func TestGenerateSLOReport_UnknownHCNoFile(t *testing.T) {
 		t.Errorf("expected no SLO report file with unknown HC ID, but file exists at %s", reportPath)
 	}
 }
+
+func TestCanonicalSLOLe(t *testing.T) {
+	t.Parallel()
+
+	for in, want := range map[string]string{
+		"0.1": "0.1", "8": "8", "8.0": "8", "+Inf": "+Inf", "inf": "+Inf",
+	} {
+		got, ok := canonicalSLOLe(in)
+		if !ok || got != want {
+			t.Errorf("canonicalSLOLe(%q) = %q,%v want %q,true", in, got, ok, want)
+		}
+	}
+	for _, bad := range []string{"", "abc", "-1", "NaN"} {
+		if _, ok := canonicalSLOLe(bad); ok {
+			t.Errorf("canonicalSLOLe(%q) = ok, want rejected", bad)
+		}
+	}
+}
+
+// TestBuildSLORows_MergesFloatEqualBoundaries pins the live-lab 2026-09-30
+// finding: different apiserver jobs emit string-distinct but float-equal le
+// boundaries ("8" vs "8.0"). They must merge by summing (disjoint cumulative
+// progressions add) instead of colliding in the backend float PK.
+func TestBuildSLORows_MergesFloatEqualBoundaries(t *testing.T) {
+	t.Parallel()
+
+	results := mappedResults{
+		"8":   mappedValues{"le": "8", "slo_read_count": "100.000000"},
+		"8.0": mappedValues{"le": "8.0", "slo_read_count": "50.000000"},
+	}
+	rows := buildSLORows(results, sloTestHCID, "ws", "we", "ca")
+	if len(rows) != 1 {
+		t.Fatalf("buildSLORows returned %d rows, want 1 merged row", len(rows))
+	}
+	if rows[0].Le != "8" || rows[0].BucketCount != "150" {
+		t.Errorf("merged row = %v, want le=8 count=150", rows[0])
+	}
+}
