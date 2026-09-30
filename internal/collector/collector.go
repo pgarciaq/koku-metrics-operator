@@ -249,6 +249,10 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		vmAggregator = newVMHourlyAggregator(c.TimeSeries)
 	}
 
+	// Hourly SLO window, captured before the quarterly loop below mutates the
+	// shared TimeSeries pointer (#644).
+	sloHourStart, sloHourEnd := c.TimeSeries.Start, c.TimeSeries.End
+
 	// ######## this actually generates the node report and the others for cost-management
 	if costEnabled {
 		if err := generateCostManagementReports(log, c, dirCfg, nodeRows, yearMonth, vmEnabled); err != nil {
@@ -297,6 +301,14 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 	if costEnabled && vmEnabled {
 		if err := generateCostVMMetricsReportFromAggregator(log, c, dirCfg, yearMonth, vmAggregator); err != nil {
 			return err
+		}
+	}
+
+	// SLO API bucket rollups (#644): External-gated hourly snapshot, best-effort.
+	// Independent of namespace opt-in and VM collection; never fails the run.
+	if rosEnabled {
+		if err := collectSLOHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
+			log.Info(fmt.Sprintf("SLO rollup collection skipped: %v", err))
 		}
 	}
 

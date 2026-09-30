@@ -208,6 +208,7 @@ func TestGenerateReports(t *testing.T) {
 	addNamespaceQuotaMockResults(mapResults, t, true)
 	addVMPodVMIMockResults(mapResults)
 	addVMGpuMockResults(mapResults)
+	addSLOMockResults(mapResults, true)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -217,7 +218,12 @@ func TestGenerateReports(t *testing.T) {
 		},
 		TimeSeries: &copyfakeTimeRange,
 	}
-	if err := GenerateReports(fakeCR, fakeDirCfg, fakeCollector); err != nil {
+	// SLO rollups are External-gated (#644); the full-run fixture expects the
+	// slo file, so this CR copy carries topology + hosted cluster ID.
+	sloCR := fakeCR.DeepCopy()
+	sloCR.Status.Topology.ControlPlaneTopology = "External"
+	sloCR.Status.ClusterID = sloTestHCID
+	if err := GenerateReports(sloCR, fakeDirCfg, fakeCollector); err != nil {
 		t.Errorf("Failed to generate reports: %v", err)
 	}
 
@@ -292,7 +298,7 @@ func TestGenerateReportsNoROS(t *testing.T) {
 	// ####### everything below compares the generated reports to the expected reports #######
 	expectedMap := getFiles("expected_reports", t)
 	generatedMap := getFiles("test_reports", t)
-	expectedDiff := 2 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change
+	expectedDiff := 3 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change
 
 	if len(expectedMap)-len(generatedMap) != expectedDiff {
 		t.Errorf("incorrect number of reports generated")
@@ -341,7 +347,7 @@ func TestGenerateReportsNoEnabledROS(t *testing.T) {
 	// ####### everything below compares the generated reports to the expected reports #######
 	expectedMap := getFiles("expected_reports", t)
 	generatedMap := getFiles("test_reports", t)
-	expectedDiff := 2 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change
+	expectedDiff := 3 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change
 
 	if len(expectedMap)-len(generatedMap) != expectedDiff {
 		t.Errorf("incorrect number of reports generated")
@@ -380,6 +386,7 @@ func TestGenerateReportsNoCost(t *testing.T) {
 	addNamespaceQuotaMockResults(mapResults, t, false)
 	addVMPodVMIMockResults(mapResults)
 	addVMGpuMockResults(mapResults)
+	addSLOMockResults(mapResults, true)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -391,6 +398,10 @@ func TestGenerateReportsNoCost(t *testing.T) {
 	}
 	noCostCR := fakeCR.DeepCopy()
 	noCostCR.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement = &trueDef
+	// SLO is ROS-only (cost-independent, #644): External topology keeps the
+	// slo file in the generated set so the cost-report diff is unchanged.
+	noCostCR.Status.Topology.ControlPlaneTopology = "External"
+	noCostCR.Status.ClusterID = sloTestHCID
 	if err := GenerateReports(noCostCR, fakeDirCfg, fakeCollector); err != nil {
 		t.Errorf("Failed to generate reports: %v", err)
 	}

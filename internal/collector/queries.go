@@ -1139,6 +1139,9 @@ var (
 
 	// rosClusterQuotaQueries is initialized by quota_cluster_queries.go init()
 	rosClusterQuotaQueries *querys
+
+	// sloQueries is initialized by slo_queries.go init()
+	sloQueries *querys
 )
 
 type querys []query

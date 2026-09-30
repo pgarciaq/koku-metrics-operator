@@ -322,3 +322,23 @@ when DCGM exporter metrics are available on **virt-launcher** pods.
 * `sm_active_avg`, `tensor_active_avg`, `dram_active_avg` — SM/tensor/DRAM activity ratios
 * `mig_profile` — MIG profile label when applicable
 * `max_slices` — Maximum MIG slices for the profile
+
+### 5. SLO API Bucket Rollups (ROS, hosted-gated)
+
+Monthly roll-up file: **`ros-openshift-slo-YYYYMM.csv`** (one cumulative snapshot per hourly cycle). Collected from `apiserver_request_duration_seconds_bucket` via [`sloQueries`](https://github.com/project-koku/koku-metrics-operator/blob/main/internal/collector/slo_queries.go) (3 instant queries, one per verb group, evaluated at window end). Emitted only when control-plane topology is `External` (HyperShift hosted clusters); standalone clusters skip quietly. One row per **verb group × `le` boundary** per window; groups with no series are omitted (incomplete windows omitted — absence reads as missing downstream, never healthy).
+
+Verb groups (API verbs, regexes baked in; `WATCH`/`CONNECT`/`PROXY` excluded at source in every query; summed over resources, never split):
+
+* `mutating` — `CREATE|UPDATE|PATCH|DELETE|DELETECOLLECTION`
+* `read` — `GET|LIST`
+* `other` — residual verbs excluding all of the above plus `WATCH|CONNECT|PROXY`
+
+| Field | Description |
+|-------|-------------|
+| `hc_cluster_id` | Hosted cluster ID (`Status.ClusterID`, the local ClusterVersion ID); empty ID skips the file |
+| `window_start` | Hourly window start (`TimeSeries.Start`) |
+| `window_end` | Hourly window end (`TimeSeries.End`) |
+| `verb_group` | `mutating`, `read`, or `other` |
+| `le` | Histogram bucket boundary label (`+Inf` always present when the group has data) |
+| `bucket_count` | Cumulative bucket count at window end (non-negative integer) |
+| `collected_at` | Snapshot time (window end; the backend buckets hourly and upserts idempotently) |
