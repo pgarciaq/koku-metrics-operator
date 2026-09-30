@@ -46,11 +46,8 @@ func TestQueryMap_SLOQueries(t *testing.T) {
 		if !strings.Contains(q, "apiserver_request_duration_seconds_bucket") {
 			t.Errorf("QueryMap[%q] should query apiserver_request_duration_seconds_bucket, got: %s", key, q)
 		}
-		if !strings.Contains(q, "sum by (le)") {
-			t.Errorf("QueryMap[%q] should group only by le (never split by resource), got: %s", key, q)
-		}
-		if strings.Contains(q, "by (le,") || strings.Contains(q, "by (resource") {
-			t.Errorf("QueryMap[%q] must never split by resource/route, got: %s", key, q)
+		if !strings.Contains(q, "sum by (le, job)") {
+			t.Errorf("QueryMap[%q] should group by (le, job) — per-job coherent progressions, never split by resource — got: %s", key, q)
 		}
 		if strings.Contains(q, "=~") {
 			// Positive match: none of the excluded verbs may appear as an alternative.
@@ -117,7 +114,7 @@ func TestSLORow_CSVHeader(t *testing.T) {
 	t.Parallel()
 
 	header := sloRow{}.csvHeader()
-	want := []string{"hc_cluster_id", "window_start", "window_end", "verb_group", "le", "bucket_count", "collected_at"}
+	want := []string{"hc_cluster_id", "window_start", "window_end", "verb_group", "le", "bucket_count", "collected_at", "source"}
 	if len(header) != len(want) {
 		t.Fatalf("csvHeader() has %d columns, want %d: %v", len(header), len(want), header)
 	}
@@ -168,9 +165,9 @@ func TestBuildSLORows_OmitsIncomplete(t *testing.T) {
 	t.Parallel()
 
 	results := mappedResults{
-		"0.1":  mappedValues{"le": "0.1", "slo_mutating_count": "12.000000", "slo_read_count": "45.000000"},
-		"+Inf": mappedValues{"le": "+Inf", "slo_mutating_count": "102.000000", "slo_read_count": "310.000000", "slo_other_count": "18.000000"},
-		"0.5":  mappedValues{"le": "0.5", "slo_mutating_count": "87.000000"},
+		"0.1":  mappedValues{"le": "0.1", "source": "kubernetes", "slo_mutating_count": "12.000000", "slo_read_count": "45.000000"},
+		"+Inf": mappedValues{"le": "+Inf", "source": "kubernetes", "slo_mutating_count": "102.000000", "slo_read_count": "310.000000", "slo_other_count": "18.000000"},
+		"0.5":  mappedValues{"le": "0.5", "source": "kubernetes", "slo_mutating_count": "87.000000"},
 	}
 	rows := buildSLORows(results, sloTestHCID, "ws", "we", "ca")
 	// 0.1 → mutating+read (other absent → omitted); +Inf → all three; 0.5 → mutating only.
@@ -180,6 +177,9 @@ func TestBuildSLORows_OmitsIncomplete(t *testing.T) {
 	seen := map[string]string{}
 	for _, r := range rows {
 		seen[r.VerbGroup+"|"+r.Le] = r.BucketCount
+		if r.Source != "kubernetes" {
+			t.Errorf("row source = %q, want kubernetes", r.Source)
+		}
 	}
 	if seen["other|0.1"] != "" || seen["read|0.5"] != "" || seen["other|0.5"] != "" {
 		t.Errorf("incomplete groups should be omitted, got: %v", seen)
@@ -189,9 +189,9 @@ func TestBuildSLORows_OmitsIncomplete(t *testing.T) {
 	}
 }
 
-func sloSample(le string, v float64, ts model.Time) *model.Sample {
+func sloSample(job, le string, v float64, ts model.Time) *model.Sample {
 	return &model.Sample{
-		Metric:    model.Metric{"le": model.LabelValue(le)},
+		Metric:    model.Metric{"le": model.LabelValue(le), "job": model.LabelValue(job)},
 		Value:     model.SampleValue(v),
 		Timestamp: ts,
 	}
@@ -204,11 +204,11 @@ func addSLOMockResults(mapResults mappedMockPromResult, withData bool) {
 			ts := model.Time(0)
 			switch q.Name {
 			case "slo-api-buckets-mutating":
-				vec = model.Vector{sloSample("0.1", 12, ts), sloSample("0.5", 87, ts), sloSample("+Inf", 102, ts)}
+				vec = model.Vector{sloSample("kubernetes", "0.1", 12, ts), sloSample("kubernetes", "0.5", 87, ts), sloSample("kubernetes", "+Inf", 102, ts)}
 			case "slo-api-buckets-read":
-				vec = model.Vector{sloSample("0.1", 45, ts), sloSample("+Inf", 310, ts)}
+				vec = model.Vector{sloSample("kubernetes", "0.1", 45, ts), sloSample("kubernetes", "+Inf", 310, ts)}
 			case "slo-api-buckets-other":
-				vec = model.Vector{sloSample("+Inf", 18, ts)}
+				vec = model.Vector{sloSample("kubernetes", "+Inf", 18, ts)}
 			}
 		}
 		mapResults[q.QueryString] = &mockPromResult{value: vec}
@@ -357,8 +357,8 @@ func TestBuildSLORows_MergesFloatEqualBoundaries(t *testing.T) {
 	t.Parallel()
 
 	results := mappedResults{
-		"8":   mappedValues{"le": "8", "slo_read_count": "100.000000"},
-		"8.0": mappedValues{"le": "8.0", "slo_read_count": "50.000000"},
+		"8":   mappedValues{"le": "8", "source": "kubernetes", "slo_read_count": "100.000000"},
+		"8.0": mappedValues{"le": "8.0", "source": "kubernetes", "slo_read_count": "50.000000"},
 	}
 	rows := buildSLORows(results, sloTestHCID, "ws", "we", "ca")
 	if len(rows) != 1 {
@@ -366,5 +366,29 @@ func TestBuildSLORows_MergesFloatEqualBoundaries(t *testing.T) {
 	}
 	if rows[0].Le != "8" || rows[0].BucketCount != "150" {
 		t.Errorf("merged row = %v, want le=8 count=150", rows[0])
+	}
+}
+
+// TestBuildSLORows_SplitsBySource pins the amendment: same (verb_group, le)
+// from different jobs must stay separate rows so each progression is a
+// coherent cumulative histogram (live lab 2026-09-30: kubernetes vs
+// metrics-server boundary schemas).
+func TestBuildSLORows_SplitsBySource(t *testing.T) {
+	t.Parallel()
+
+	results := mappedResults{
+		"a": mappedValues{"le": "0.4", "source": "metrics-server", "slo_read_count": "94577.000000"},
+		"b": mappedValues{"le": "0.1", "source": "kubernetes", "slo_read_count": "3357110.000000"},
+	}
+	rows := buildSLORows(results, sloTestHCID, "ws", "we", "ca")
+	if len(rows) != 2 {
+		t.Fatalf("buildSLORows returned %d rows, want 2 (one per source)", len(rows))
+	}
+	bySource := map[string]sloRow{}
+	for _, r := range rows {
+		bySource[r.Source] = r
+	}
+	if bySource["kubernetes"].BucketCount != "3357110" || bySource["metrics-server"].BucketCount != "94577" {
+		t.Errorf("per-source rows wrong: %v", bySource)
 	}
 }

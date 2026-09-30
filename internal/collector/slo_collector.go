@@ -34,9 +34,10 @@ var sloVerbGroups = []struct {
 }
 
 // sloRow is one cumulative bucket snapshot. Column order matches the #644
-// canonical contract: hc_cluster_id | window_start | window_end | verb_group
-// | le | bucket_count | collected_at. Incomplete windows are omitted by the
-// emitter (absence reads as missing downstream).
+// canonical contract plus the source-split amendment: hc_cluster_id |
+// window_start | window_end | verb_group | le | bucket_count | collected_at |
+// source. Incomplete windows are omitted by the emitter (absence reads as
+// missing downstream).
 type sloRow struct {
 	HCClusterID string
 	WindowStart string
@@ -45,6 +46,7 @@ type sloRow struct {
 	Le          string
 	BucketCount string
 	CollectedAt string
+	Source      string
 }
 
 func (s sloRow) csvHeader() []string {
@@ -56,6 +58,7 @@ func (s sloRow) csvHeader() []string {
 		"le",
 		"bucket_count",
 		"collected_at",
+		"source",
 	}
 }
 
@@ -68,6 +71,7 @@ func (s sloRow) csvRow() []string {
 		s.Le,
 		s.BucketCount,
 		s.CollectedAt,
+		s.Source,
 	}
 }
 
@@ -128,10 +132,11 @@ func canonicalSLOLe(raw string) (string, bool) {
 // per-cycle snapshot time; the backend buckets hourly and upserts
 // idempotently.
 func buildSLORows(results mappedResults, hcClusterID string, windowStart, windowEnd, collectedAt string) []sloRow {
-	type key struct{ group, le string }
+	type key struct{ group, le, source string }
 	type accum struct {
-		le    string
-		count int64
+		le     string
+		source string
+		count  int64
 	}
 	merged := map[key]*accum{}
 	var order []key
@@ -144,6 +149,10 @@ func buildSLORows(results mappedResults, hcClusterID string, windowStart, window
 		if !ok {
 			continue
 		}
+		source, _ := val["source"].(string)
+		if source == "" {
+			continue
+		}
 		for _, g := range sloVerbGroups {
 			countStr, ok := formatSLOCount(val[g.valName])
 			if !ok {
@@ -153,10 +162,10 @@ func buildSLORows(results mappedResults, hcClusterID string, windowStart, window
 			if err != nil {
 				continue
 			}
-			k := key{g.group, canon}
+			k := key{g.group, canon, source}
 			a, dup := merged[k]
 			if !dup {
-				a = &accum{le: canon}
+				a = &accum{le: canon, source: source}
 				merged[k] = a
 				order = append(order, k)
 			}
@@ -174,6 +183,7 @@ func buildSLORows(results mappedResults, hcClusterID string, windowStart, window
 			Le:          a.le,
 			BucketCount: strconv.FormatInt(a.count, 10),
 			CollectedAt: collectedAt,
+			Source:      a.source,
 		})
 	}
 	return rows
@@ -219,7 +229,7 @@ func generateSLOReport(log gologr.Logger, c *PrometheusCollector, dirCfg *dircon
 	sloCSVRows := make(mappedCSVStruct, len(rows))
 	for _, r := range rows {
 		r := r
-		sloCSVRows[r.WindowStart+"|"+r.WindowEnd+"|"+r.VerbGroup+"|"+r.Le] = r
+		sloCSVRows[r.WindowStart+"|"+r.WindowEnd+"|"+r.VerbGroup+"|"+r.Le+"|"+r.Source] = r
 	}
 	emptySLORow := sloRow{}
 	sloReport := report{
