@@ -209,6 +209,7 @@ func TestGenerateReports(t *testing.T) {
 	addVMPodVMIMockResults(mapResults)
 	addVMGpuMockResults(mapResults)
 	addSLOMockResults(mapResults, true)
+	addAPITaxMockResults(mapResults, true)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -298,7 +299,7 @@ func TestGenerateReportsNoROS(t *testing.T) {
 	// ####### everything below compares the generated reports to the expected reports #######
 	expectedMap := getFiles("expected_reports", t)
 	generatedMap := getFiles("test_reports", t)
-	expectedDiff := 3 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change
+	expectedDiff := 4 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change (apitax golden added one expected ROS report)
 
 	if len(expectedMap)-len(generatedMap) != expectedDiff {
 		t.Errorf("incorrect number of reports generated")
@@ -347,7 +348,7 @@ func TestGenerateReportsNoEnabledROS(t *testing.T) {
 	// ####### everything below compares the generated reports to the expected reports #######
 	expectedMap := getFiles("expected_reports", t)
 	generatedMap := getFiles("test_reports", t)
-	expectedDiff := 3 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change
+	expectedDiff := 4 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change (apitax golden added one expected ROS report)
 
 	if len(expectedMap)-len(generatedMap) != expectedDiff {
 		t.Errorf("incorrect number of reports generated")
@@ -387,6 +388,7 @@ func TestGenerateReportsNoCost(t *testing.T) {
 	addVMPodVMIMockResults(mapResults)
 	addVMGpuMockResults(mapResults)
 	addSLOMockResults(mapResults, true)
+	addAPITaxMockResults(mapResults, true)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{

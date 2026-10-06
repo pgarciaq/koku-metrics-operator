@@ -312,6 +312,15 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		}
 	}
 
+	// API tax webhook rollups (thin W5, #393): ungated hourly snapshot,
+	// best-effort. Independent of topology, namespace opt-in, and VM
+	// collection; never fails the run.
+	if rosEnabled {
+		if err := collectAPITaxHourly(log, c, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
+			log.Info(fmt.Sprintf("API tax collection skipped: %v", err))
+		}
+	}
+
 	//################################################################################################################
 
 	return nil

@@ -1142,6 +1142,9 @@ var (
 
 	// sloQueries is initialized by slo_queries.go init()
 	sloQueries *querys
+
+	// apitaxQueries is initialized by apitax_queries.go init()
+	apitaxQueries *querys
 )
 
 type querys []query
