@@ -321,6 +321,15 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		}
 	}
 
+	// NodePool inventory snapshots (W3 slice, #660 Child A → #673):
+	// ungated hourly snapshot, best-effort. K8s-API sourced (not Prom);
+	// never fails the run.
+	if rosEnabled {
+		if err := collectNodepoolHourly(log, c.RestConfig, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
+			log.Info(fmt.Sprintf("NodePool inventory collection skipped: %v", err))
+		}
+	}
+
 	//################################################################################################################
 
 	return nil
