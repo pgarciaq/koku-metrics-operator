@@ -1376,3 +1376,22 @@ func TestIterateVector_WorkloadPodCountMissing(t *testing.T) {
 		t.Errorf("WorkloadPodCount should be empty for pods without workload-pod-count data, got %q", row.WorkloadPodCount)
 	}
 }
+
+func TestRestartCountQueryShape(t *testing.T) {
+	q, ok := QueryMap["ros:restart_count_container_sum"]
+	if !ok {
+		t.Fatal("ros:restart_count_container_sum must exist")
+	}
+	if !strings.Contains(q, "kube_pod_container_status_restarts_total") {
+		t.Errorf("restart query must read kube_pod_container_status_restarts_total, got: %s", q)
+	}
+	if strings.Contains(q, "OOMKilled") {
+		t.Errorf("restart query must not filter OOMKilled, got: %s", q)
+	}
+	if !strings.Contains(q, "label_cost_management_optimizations") {
+		t.Errorf("restart query must filter label_cost_management_optimizations, got: %s", q)
+	}
+	if !strings.Contains(q, "label_hypershift_openshift_io_hosted_control_plane") {
+		t.Errorf("restart query must filter label_hypershift_openshift_io_hosted_control_plane, got: %s", q)
+	}
+}

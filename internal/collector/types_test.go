@@ -20,11 +20,77 @@ func TestRosContainerRow_OOMCountInHeader(t *testing.T) {
 	if oomIdx > 0 && header[oomIdx-1] != "memory_rss_usage_container_sum" {
 		t.Errorf("oom_count should follow memory_rss_usage_container_sum, got %q", header[oomIdx-1])
 	}
-	if oomIdx < len(header)-1 && header[oomIdx+1] != "workload_pod_count" {
-		t.Errorf("oom_count should precede workload_pod_count, got %q", header[oomIdx+1])
+	if oomIdx < len(header)-1 && header[oomIdx+1] != "restart_count" {
+		t.Errorf("oom_count should precede restart_count, got %q", header[oomIdx+1])
 	}
 }
 
+func TestRosContainerRow_RestartCountInHeader(t *testing.T) {
+	header := rosContainerRow{}.csvHeader()
+
+	restartIdx := -1
+	for i, col := range header {
+		if col == "restart_count" {
+			restartIdx = i
+			break
+		}
+	}
+	if restartIdx < 0 {
+		t.Fatal("restart_count must be present in csvHeader()")
+	}
+	if restartIdx > 0 && header[restartIdx-1] != "oom_count" {
+		t.Errorf("restart_count should follow oom_count, got %q", header[restartIdx-1])
+	}
+	if restartIdx < len(header)-1 && header[restartIdx+1] != "workload_pod_count" {
+		t.Errorf("restart_count should precede workload_pod_count, got %q", header[restartIdx+1])
+	}
+}
+
+func TestRosContainerRow_RestartCountInRow(t *testing.T) {
+	row := rosContainerRow{
+		dateTimes: &dateTimes{
+			ReportPeriodStart: "2026-03-01",
+			ReportPeriodEnd:   "2026-04-01",
+			IntervalStart:     "2026-03-15 10:00:00",
+			IntervalEnd:       "2026-03-15 10:15:00",
+		},
+		OOMCount:     "2",
+		RestartCount: "5",
+	}
+
+	csvRow := row.csvRow()
+	header := row.csvHeader()
+
+	if len(header) != len(csvRow) {
+		t.Fatalf("csvRow length %d != csvHeader length %d", len(csvRow), len(header))
+	}
+
+	oomIdx := -1
+	restartIdx := -1
+	for i, col := range header {
+		switch col {
+		case "oom_count":
+			oomIdx = i
+		case "restart_count":
+			restartIdx = i
+		}
+	}
+	if oomIdx < 0 {
+		t.Fatal("oom_count must be in header")
+	}
+	if restartIdx < 0 {
+		t.Fatal("restart_count must be in header")
+	}
+	if restartIdx != oomIdx+1 {
+		t.Errorf("restart_count should immediately follow oom_count, got indices %d and %d", restartIdx, oomIdx)
+	}
+	if csvRow[restartIdx] != "5" {
+		t.Errorf("csvRow restart count = %q, want %q", csvRow[restartIdx], "5")
+	}
+	if csvRow[oomIdx] != "2" {
+		t.Errorf("csvRow OOM count = %q, want %q", csvRow[oomIdx], "2")
+	}
+}
 func TestRosContainerRow_OOMCountInRow(t *testing.T) {
 	row := rosContainerRow{
 		dateTimes: &dateTimes{

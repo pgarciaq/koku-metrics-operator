@@ -493,6 +493,7 @@ type rosContainerRow struct {
 	MemoryRSSUsageContainerMax     string `mapstructure:"memory-rss-usage-container-max"`
 	MemoryRSSUsageContainerSum     string `mapstructure:"memory-rss-usage-container-sum"`
 	OOMCount                       string `mapstructure:"oom-count"`
+	RestartCount                   string `mapstructure:"restart-count"`
 	WorkloadPodCount               string `mapstructure:"workload-pod-count"`
 	DesiredReplicas                string `mapstructure:"desired-replicas"`
 	AvailableReplicas              string `mapstructure:"available-replicas"`
@@ -563,6 +564,7 @@ func (rosContainerRow) csvHeader() []string {
 		"memory_rss_usage_container_max",
 		"memory_rss_usage_container_sum",
 		"oom_count",
+		"restart_count",
 		"workload_pod_count",
 		"desired_replicas",
 		"available_replicas",
@@ -634,6 +636,7 @@ func (row rosContainerRow) csvRow() []string {
 		row.MemoryRSSUsageContainerMax,
 		row.MemoryRSSUsageContainerSum,
 		row.OOMCount,
+		row.RestartCount,
 		row.WorkloadPodCount,
 		row.DesiredReplicas,
 		row.AvailableReplicas,
