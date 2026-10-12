@@ -1397,15 +1397,20 @@ func TestNodePressureQueryShape(t *testing.T) {
 		if !strings.Contains(q, "status='true'") && !strings.Contains(q, `status="true"`) {
 			t.Errorf("%s must filter status true, got: %s", key, q)
 		}
-		// Pressure is per-node; the join onto container rows must carry
-		// container identity or the merge key cannot match.
-		if !strings.Contains(q, "group_left(container, pod, namespace)") {
-			t.Errorf("%s must join container identity, got: %s", key, q)
-		}
+		// Pressure is per-node; filter the requests carrier with `and on(node)`
+		// (many-to-one, always legal) rather than group_left (many-to-many
+		// across containers sharing a node — the API server rejects it).
 		// Carrier is CPU requests: backend rejects request-less rows, so the
-		// join covers exactly the rows that survive ingest.
-		if !strings.Contains(q, "kube_pod_container_resource_requests") {
-			t.Errorf("%s must join CPU requests carrier, got: %s", key, q)
+		// join covers exactly the rows that survive ingest. clamp_min emits
+		// clean 1s (raw request fractions would round to 0 in the backend).
+		if !strings.Contains(q, "and on(node)") {
+			t.Errorf("%s must filter with and on(node), got: %s", key, q)
+		}
+		if strings.Contains(q, "group_left(container") {
+			t.Errorf("%s must not group_left container identity, got: %s", key, q)
+		}
+		if !strings.Contains(q, "clamp_min(") {
+			t.Errorf("%s must clamp_min to emit clean 1s, got: %s", key, q)
 		}
 	}
 }
