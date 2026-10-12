@@ -116,6 +116,9 @@ var (
 		"ros:memory_rss_usage_container_sum": "(sum by(container, pod, namespace, node) (avg_over_time(container_memory_rss{container!='', container!='POD', pod!=''}[15m]) * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'})) or (sum by(container, pod, namespace, node) (avg_over_time(container_memory_rss{container!='', container!='POD', pod!=''}[15m]) * on(namespace) group_left() (kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or kube_namespace_labels{label_hypershift_openshift_io_hosted_control_plane='true', namespace!~'kube-.*|openshift|openshift-.*'})))",
 		"ros:oom_count_container_sum":        "(sum by(container, pod, namespace) (increase(kube_pod_container_status_restarts_total{container!='', container!='POD', pod!=''}[15m]) * on(pod, namespace, container) group_left() (kube_pod_container_status_last_terminated_reason{reason='OOMKilled'} > 0)) * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'}) or (sum by(container, pod, namespace) (increase(kube_pod_container_status_restarts_total{container!='', container!='POD', pod!=''}[15m]) * on(pod, namespace, container) group_left() (kube_pod_container_status_last_terminated_reason{reason='OOMKilled'} > 0)) * on(namespace) group_left() (kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or kube_namespace_labels{label_hypershift_openshift_io_hosted_control_plane='true', namespace!~'kube-.*|openshift|openshift-.*'}))",
 		"ros:restart_count_container_sum":    "(sum by(container, pod, namespace) (increase(kube_pod_container_status_restarts_total{container!='', container!='POD', pod!=''}[15m])) * on(namespace) group_left kube_namespace_labels{label_insights_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'}) or (sum by(container, pod, namespace) (increase(kube_pod_container_status_restarts_total{container!='', container!='POD', pod!=''}[15m])) * on(namespace) group_left() (kube_namespace_labels{label_cost_management_optimizations='true', namespace!~'kube-.*|openshift|openshift-.*'} or kube_namespace_labels{label_hypershift_openshift_io_hosted_control_plane='true', namespace!~'kube-.*|openshift|openshift-.*'}))",
+		"ros:node_pressure_memory":           "max by (container, pod, namespace) (kube_node_status_condition{condition='MemoryPressure',status='true'} * on(node) group_left(container, pod, namespace) max by (node, container, pod, namespace) (kube_pod_container_resource_requests{resource='cpu'}))",
+		"ros:node_pressure_disk":             "max by (container, pod, namespace) (kube_node_status_condition{condition='DiskPressure',status='true'} * on(node) group_left(container, pod, namespace) max by (node, container, pod, namespace) (kube_pod_container_resource_requests{resource='cpu'}))",
+		"ros:node_pressure_pid":              "max by (container, pod, namespace) (kube_node_status_condition{condition='PIDPressure',status='true'} * on(node) group_left(container, pod, namespace) max by (node, container, pod, namespace) (kube_pod_container_resource_requests{resource='cpu'}))",
 
 		// Workload pod count: counts ready pods per (container, namespace, workload, workload_type)
 		// and broadcasts the count to each per-pod row via a many-to-one join.
@@ -860,6 +863,33 @@ var (
 			MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
 			QueryValue: &saveQueryValue{
 				ValName: "restart-count",
+			},
+			RowKey: []model.LabelName{"container", "pod", "namespace"},
+		},
+		query{
+			Name:        "node-pressure-memory",
+			QueryString: QueryMap["ros:node_pressure_memory"],
+			MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+			QueryValue: &saveQueryValue{
+				ValName: "node-pressure-memory",
+			},
+			RowKey: []model.LabelName{"container", "pod", "namespace"},
+		},
+		query{
+			Name:        "node-pressure-disk",
+			QueryString: QueryMap["ros:node_pressure_disk"],
+			MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+			QueryValue: &saveQueryValue{
+				ValName: "node-pressure-disk",
+			},
+			RowKey: []model.LabelName{"container", "pod", "namespace"},
+		},
+		query{
+			Name:        "node-pressure-pid",
+			QueryString: QueryMap["ros:node_pressure_pid"],
+			MetricKey:   staticFields{"container_name": "container", "pod": "pod", "namespace": "namespace"},
+			QueryValue: &saveQueryValue{
+				ValName: "node-pressure-pid",
 			},
 			RowKey: []model.LabelName{"container", "pod", "namespace"},
 		},

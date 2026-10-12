@@ -148,6 +148,55 @@ func TestRosContainerRow_OOMCountZero(t *testing.T) {
 	}
 }
 
+func TestRosContainerRow_NodePressureInRow(t *testing.T) {
+	row := rosContainerRow{
+		dateTimes: &dateTimes{
+			ReportPeriodStart: "2026-03-01",
+			ReportPeriodEnd:   "2026-04-01",
+			IntervalStart:     "2026-03-15 10:00:00",
+			IntervalEnd:       "2026-03-15 10:15:00",
+		},
+		NodePressureMemory: "1",
+		NodePressureDisk:   "0",
+		NodePressurePID:    "",
+	}
+	header := row.csvHeader()
+	csvRow := row.csvRow()
+	if len(header) != len(csvRow) {
+		t.Fatalf("csvRow length %d != csvHeader length %d", len(csvRow), len(header))
+	}
+	memIdx, diskIdx, pidIdx := -1, -1, -1
+	for i, col := range header {
+		switch col {
+		case "node_pressure_memory":
+			memIdx = i
+		case "node_pressure_disk":
+			diskIdx = i
+		case "node_pressure_pid":
+			pidIdx = i
+		}
+	}
+	if memIdx < 0 {
+		t.Fatal("node_pressure_memory must be present in csvHeader()")
+	}
+	if diskIdx != memIdx+1 {
+		t.Errorf("node_pressure_disk should follow node_pressure_memory")
+	}
+	if pidIdx != diskIdx+1 {
+		t.Errorf("node_pressure_pid should follow node_pressure_disk")
+	}
+	// Distinct values so a crossed-wire mapping cannot hide.
+	if csvRow[memIdx] != "1" {
+		t.Errorf("csvRow node_pressure_memory = %q, want %q", csvRow[memIdx], "1")
+	}
+	if csvRow[diskIdx] != "0" {
+		t.Errorf("csvRow node_pressure_disk = %q, want %q", csvRow[diskIdx], "0")
+	}
+	if csvRow[pidIdx] != "" {
+		t.Errorf("csvRow node_pressure_pid = %q, want empty", csvRow[pidIdx])
+	}
+}
+
 func TestRosContainerRow_ReplicaColumns(t *testing.T) {
 	row := rosContainerRow{
 		dateTimes: &dateTimes{

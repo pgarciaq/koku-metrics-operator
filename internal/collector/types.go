@@ -512,6 +512,9 @@ type rosContainerRow struct {
 	SMActiveMin                    string `mapstructure:"sm-active-min"`
 	SMActiveMax                    string `mapstructure:"sm-active-max"`
 	SMActiveAvg                    string `mapstructure:"sm-active-avg"`
+	NodePressureMemory             string `mapstructure:"node-pressure-memory"`
+	NodePressureDisk               string `mapstructure:"node-pressure-disk"`
+	NodePressurePID                string `mapstructure:"node-pressure-pid"`
 }
 
 func (rosContainerRow) csvHeader() []string {
@@ -583,6 +586,9 @@ func (rosContainerRow) csvHeader() []string {
 		"sm_active_min",
 		"sm_active_max",
 		"sm_active_avg",
+		"node_pressure_memory",
+		"node_pressure_disk",
+		"node_pressure_pid",
 	}
 }
 
@@ -655,6 +661,9 @@ func (row rosContainerRow) csvRow() []string {
 		row.SMActiveMin,
 		row.SMActiveMax,
 		row.SMActiveAvg,
+		row.NodePressureMemory,
+		row.NodePressureDisk,
+		row.NodePressurePID,
 	}
 }
 

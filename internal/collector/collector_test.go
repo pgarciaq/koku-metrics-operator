@@ -1377,6 +1377,39 @@ func TestIterateVector_WorkloadPodCountMissing(t *testing.T) {
 	}
 }
 
+func TestNodePressureQueryShape(t *testing.T) {
+	want := map[string]string{
+		"ros:node_pressure_memory": "MemoryPressure",
+		"ros:node_pressure_disk":   "DiskPressure",
+		"ros:node_pressure_pid":    "PIDPressure",
+	}
+	for key, cond := range want {
+		q, ok := QueryMap[key]
+		if !ok {
+			t.Fatalf("%s must exist", key)
+		}
+		if !strings.Contains(q, "kube_node_status_condition") {
+			t.Errorf("%s must read kube_node_status_condition, got: %s", key, q)
+		}
+		if !strings.Contains(q, cond) {
+			t.Errorf("%s must filter condition %s, got: %s", key, cond, q)
+		}
+		if !strings.Contains(q, "status='true'") && !strings.Contains(q, `status="true"`) {
+			t.Errorf("%s must filter status true, got: %s", key, q)
+		}
+		// Pressure is per-node; the join onto container rows must carry
+		// container identity or the merge key cannot match.
+		if !strings.Contains(q, "group_left(container, pod, namespace)") {
+			t.Errorf("%s must join container identity, got: %s", key, q)
+		}
+		// Carrier is CPU requests: backend rejects request-less rows, so the
+		// join covers exactly the rows that survive ingest.
+		if !strings.Contains(q, "kube_pod_container_resource_requests") {
+			t.Errorf("%s must join CPU requests carrier, got: %s", key, q)
+		}
+	}
+}
+
 func TestRestartCountQueryShape(t *testing.T) {
 	q, ok := QueryMap["ros:restart_count_container_sum"]
 	if !ok {
