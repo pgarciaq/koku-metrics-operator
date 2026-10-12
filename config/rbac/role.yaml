@@ -41,11 +41,17 @@ rules:
   resources:
   - hostedclusters
   - hostedcontrolplanes
-  - nodepools
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - hypershift.openshift.io
+  resources:
+  - nodepools
+  verbs:
+  - get
+  - list
 - apiGroups:
   - instancetype.kubevirt.io
   resources:
