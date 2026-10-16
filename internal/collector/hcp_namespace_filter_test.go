@@ -63,7 +63,41 @@ func TestRosQueriesIncludeHypershiftNamespaces(t *testing.T) {
 	}
 }
 
-// TestRosQueriesGroupLeftSyntax guards the exact failure mode hit during
+// TestRosQueriesLabelWinsOverNamespaceExclusions pins #694: an explicit
+// opt-in label must never be neutered by the kube-/openshift- exclusion —
+// labeled namespaces flow regardless of name. Every kube_namespace_labels
+// selector in ros queries joins on a label match, so dropping the exclusion
+// admits exactly the labeled namespaces and nothing else. Quota queries are
+// out of scope (separate surface, separate justification).
+func TestRosQueriesLabelWinsOverNamespaceExclusions(t *testing.T) {
+	// Deferred to quota-surface justification, not an oversight.
+	quotaScoped := map[string]bool{
+		"ros:namespace_quota_hard": true,
+		"ros:namespace_quota_used": true,
+	}
+	selector := regexp.MustCompile(`kube_namespace_labels\{([^{}]*)\}`)
+	checked := 0
+	offending := []string{}
+	for key, q := range QueryMap {
+		if !strings.HasPrefix(key, "ros:") || quotaScoped[key] {
+			continue
+		}
+		for _, m := range selector.FindAllStringSubmatch(q, -1) {
+			checked++
+			if strings.Contains(m[1], "namespace!~") {
+				offending = append(offending, key)
+				break
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected ros queries with namespace-label selectors to inspect")
+	}
+	if len(offending) != 0 {
+		t.Errorf("ros queries neuter labeled namespaces with exclusions: %v", offending)
+	}
+}
+
 // implementation: `group_left (...)` with a space reads `(...)` as grouping
 // options, so a parenthesized selector union there is a parse error — the
 // empty form `group_left()` is required. Legitimate `group_left(label, ...)`
