@@ -330,6 +330,16 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		}
 	}
 
+	// W4 fleet-capacity snapshot (#392, ADR-0334 amendment): hourly,
+	// current window only, K8s-API first (nodes/HC/HCP/pressure) with
+	// Prometheus only for per-HCP QPS rates and the MCE reference gauges.
+	// Best-effort; never fails the run.
+	if rosEnabled {
+		if err := collectHCPCapacityHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
+			log.Info(fmt.Sprintf("HCP capacity collection skipped: %v", err))
+		}
+	}
+
 	//################################################################################################################
 
 	return nil

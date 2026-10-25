@@ -1098,3 +1098,36 @@ func TestTrimPackages(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildLocalCSVFileList_HCPCapacityROSFile pins the W4 transport
+// contract (#392): the fleet-capacity snapshot CSV must classify as a ROS
+// file so it rides resource_optimization_files through the manifest — the
+// ros-openshift substring rule is load-bearing; narrowing it would
+// silently drop every capacity snapshot at packaging time.
+func TestBuildLocalCSVFileList_HCPCapacityROSFile(t *testing.T) {
+	cr = &metricscfgv1beta1.MetricsConfig{}
+	dir := t.TempDir()
+	fileName := "ros-openshift-hcp-capacity-202610.csv"
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte("observed_at\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fileList []os.FileInfo
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fileList = append(fileList, info)
+	}
+	got := testPackager.buildLocalCSVFileList(fileList, dir)
+	if len(got.rosfiles) != 1 {
+		t.Fatalf("W4 capacity CSV must classify as a ROS file (resource_optimization_files): rosfiles=%d", len(got.rosfiles))
+	}
+	if len(got.costfiles) != 0 {
+		t.Fatalf("W4 capacity CSV must never classify as a cost file: costfiles=%d", len(got.costfiles))
+	}
+}
