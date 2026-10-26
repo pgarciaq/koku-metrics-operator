@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/csv"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -135,6 +136,7 @@ func TestHCPCapacityRow_Contract(t *testing.T) {
 		"eligible_worker_max_pods", "worker_placement_known", "pressure_state",
 		"mce_request_max_hcs", "mce_low_qps_max_hcs", "mce_average_qps_max_hcs",
 		"mce_medium_qps_max_hcs", "mce_high_qps_max_hcs",
+		"shared_infrastructure",
 	}
 	if got := (hcpCapacityRow{}).csvHeader(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("header is the backend contract — changes coordinate: %v", got)
@@ -427,6 +429,62 @@ func TestBuildHCPCapacityRow(t *testing.T) {
 	}
 	if csvr[8] != "true" || csvr[17] != "true" {
 		t.Errorf("boolean columns must render true: inventory=%q placement=%q", csvr[8], csvr[17])
+	}
+	if csvr[24] != "false" {
+		t.Errorf("shared_infrastructure renders a strict boolean, got %q", csvr[24])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// shared infrastructure (compact topology, ADR-0334 §3.2.5)
+// ---------------------------------------------------------------------------
+
+// A node carrying both a control-plane role and the worker role is compact
+// topology: the eligible pool includes the management control plane's own
+// capacity and the row must carry the caveat.
+func TestSharedInfrastructure_Detection(t *testing.T) {
+	compact := []unstructured.Unstructured{
+		capacityNodeObj("node-0", map[string]interface{}{
+			"node-role.kubernetes.io/master": "",
+			"node-role.kubernetes.io/worker": "",
+		}, nil, "8", "32Gi", "500"),
+	}
+	if !sharedInfrastructure(compact) {
+		t.Error("master+worker node is compact topology")
+	}
+	cpLabel := []unstructured.Unstructured{
+		capacityNodeObj("node-0", map[string]interface{}{
+			"node-role.kubernetes.io/control-plane": "",
+			"node-role.kubernetes.io/worker":        "",
+		}, nil, "8", "32Gi", "500"),
+	}
+	if !sharedInfrastructure(cpLabel) {
+		t.Error("control-plane+worker node is compact topology")
+	}
+	dedicated := []unstructured.Unstructured{
+		capacityNodeObj("master-0", map[string]interface{}{"node-role.kubernetes.io/master": ""}, nil, "4", "16Gi", "250"),
+		capacityNodeObj("worker-0", map[string]interface{}{"node-role.kubernetes.io/worker": ""}, nil, "8", "32Gi", "500"),
+	}
+	if sharedInfrastructure(dedicated) {
+		t.Error("dedicated control-plane/worker split is not compact topology")
+	}
+	workersOnly := []unstructured.Unstructured{
+		capacityNodeObj("worker-0", map[string]interface{}{"node-role.kubernetes.io/worker": ""}, nil, "8", "32Gi", "500"),
+	}
+	if sharedInfrastructure(workersOnly) {
+		t.Error("worker-only nodes are not compact topology")
+	}
+}
+
+// Non-finite MCE gauge samples are measurement error — they must invalidate
+// the reference, never convert to platform-dependent int64 garbage.
+func TestMCEGaugeFromVector_NonFinite(t *testing.T) {
+	for _, value := range []model.SampleValue{model.SampleValue(math.NaN()), model.SampleValue(math.Inf(1))} {
+		vec := model.Vector{&model.Sample{Value: value, Timestamp: model.TimeFromUnix(1700000000)}}
+		got, _, ok := mceGaugeFromVector(vec)
+		if ok || got != nil {
+			t.Errorf("non-finite sample must invalidate the reference, got %v ok=%v", got, ok)
+		}
 	}
 }
 

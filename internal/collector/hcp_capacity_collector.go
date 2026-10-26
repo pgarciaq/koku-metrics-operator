@@ -8,6 +8,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -171,6 +172,7 @@ type hcpCapacityRow struct {
 	EligibleMaxPods           int64
 	WorkerPlacementKnown      bool
 	PressureState             string
+	SharedInfrastructure      bool
 	MCERequestMaxHCs          *int64
 	MCELowQPSMaxHCs           *int64
 	MCEAverageQPSMaxHCs       *int64
@@ -188,6 +190,10 @@ func (hcpCapacityRow) csvHeader() []string {
 		"eligible_worker_max_pods", "worker_placement_known", "pressure_state",
 		"mce_request_max_hcs", "mce_low_qps_max_hcs", "mce_average_qps_max_hcs",
 		"mce_medium_qps_max_hcs", "mce_high_qps_max_hcs",
+		// Appended (contract position 25): compact/shared-infrastructure
+		// topology — management control-plane nodes doubling as workers
+		// (ADR-0334 §3.2.5 caveat).
+		"shared_infrastructure",
 	}
 }
 
@@ -228,6 +234,7 @@ func (r hcpCapacityRow) csvRow() []string {
 		formatCapacityInt64(r.MCEAverageQPSMaxHCs),
 		formatCapacityInt64(r.MCEMediumQPSMaxHCs),
 		formatCapacityInt64(r.MCEHighQPSMaxHCs),
+		strconv.FormatBool(r.SharedInfrastructure),
 	}
 }
 
@@ -274,6 +281,28 @@ func eligibleWorkers(nodes, hcs []unstructured.Unstructured) (hcpWorkerCapacity,
 		out.MaxPods += pods
 	}
 	return out, true
+}
+
+// sharedInfrastructure reports compact topology: any node carrying both a
+// control-plane role label and the worker role label (OCP sizing-guide
+// §3.2.5; ADR-0334 amendment). On such clusters the eligible worker pool
+// includes the management control plane's own capacity, so the
+// published-sizing estimate may overstate dedicated capacity — the row
+// flags it and the API renders the caveat.
+func sharedInfrastructure(nodes []unstructured.Unstructured) bool {
+	for i := range nodes {
+		_, worker, _ := unstructured.NestedString(nodes[i].Object, "metadata", "labels", workerRoleLabel)
+		if !worker {
+			continue
+		}
+		if _, master, _ := unstructured.NestedString(nodes[i].Object, "metadata", "labels", "node-role.kubernetes.io/master"); master {
+			return true
+		}
+		if _, cp, _ := unstructured.NestedString(nodes[i].Object, "metadata", "labels", "node-role.kubernetes.io/control-plane"); cp {
+			return true
+		}
+	}
+	return false
 }
 
 func nodeHasUntoleratedTaint(node unstructured.Unstructured) bool {
@@ -405,6 +434,12 @@ func aggregateReadyQPS(results []hcpQPSQueryResult) (float64, bool) {
 // zero-filled.
 func mceGaugeFromVector(vec model.Vector) (*int64, time.Time, bool) {
 	if len(vec) != 1 {
+		return nil, time.Time{}, false
+	}
+	// Non-finite samples are measurement error (e.g. a division-by-zero in
+	// the addon's own computation) — int64(NaN) is platform-dependent
+	// garbage. Treat as an invalidated reference, never a number.
+	if math.IsNaN(float64(vec[0].Value)) || math.IsInf(float64(vec[0].Value), 0) {
 		return nil, time.Time{}, false
 	}
 	v := int64(vec[0].Value)
@@ -570,6 +605,7 @@ func buildHCPCapacityRow(facts *hcpK8sFacts, prom hcpPromFacts, operatorVersion 
 		EligibleMaxPods:           wc.MaxPods,
 		WorkerPlacementKnown:      placementKnown,
 		PressureState:             nodePressureState(facts.Nodes),
+		SharedInfrastructure:      sharedInfrastructure(facts.Nodes),
 		MCERequestMaxHCs:          prom.MCERequestMaxHCs,
 		MCELowQPSMaxHCs:           prom.MCELowQPSMaxHCs,
 		MCEAverageQPSMaxHCs:       prom.MCEAverageQPSMaxHCs,
