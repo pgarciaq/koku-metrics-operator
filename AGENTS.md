@@ -60,6 +60,11 @@ make verify-manifests   # verify CRD/RBAC manifests are up to date
 - `make verify-manifests` (runs `make manifests`, diffs `config/`) is the check
   that fails a hand edit. `hack/verify-bundle-drift.sh` only warns, and is
   advisory off release refs.
+- `internal/collector/rbac_grants_test.go` covers what the marker chain cannot:
+  a dynamic client names its GVR in code, so controller-gen never sees it. The
+  test reads the generated `role.yaml` and fails when a collector read has no
+  ClusterRole grant, and a tripwire fails a collector file that builds a GVR with
+  no row in the table. Add the row and its `+kubebuilder:rbac` marker together.
 - A push runs CI only for `downstream`, `main`, and `pgarciaq-rosocp-superpowers-*`;
   any other branch is checked when a PR exists. Confirm with
   `gh run list --repo pgarciaq/koku-metrics-operator --event push`.
