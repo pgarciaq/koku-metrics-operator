@@ -152,6 +152,14 @@ vendor: ## Update deps, tidy and vendor modules.
 verify-manifests: ## Verify manifests are up to date.
 	./hack/verify-manifests.sh
 
+.PHONY: verify-bundle-drift
+verify-bundle-drift: ## Verify bundle/ does not lack permissions or CRD fields that config/ requires.
+	./hack/verify-bundle-drift.sh --check
+
+.PHONY: verify-install
+verify-install: ## Verify an install on the current cluster actually reconciles (KMO_NAMESPACE/KMO_CR_NAME).
+	./hack/verify-install.sh
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 .PHONY: test

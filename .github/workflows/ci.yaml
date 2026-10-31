@@ -26,6 +26,46 @@ jobs:
       - name: Verify generated Manifests are up to date
         run: make verify-manifests
 
+  # bundle/ is regenerated at release time from the release branch, so it can lag
+  # config/ for a whole release cycle. That lag is a real defect (a branch image
+  # installed under a stale bundle gets `forbidden`, then an empty CR status) but
+  # it is not something an unrelated PR should be blocked on. So: block when the
+  # artifact itself is edited or the branch is a release branch, warn otherwise.
+  verify-bundle-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Decide whether drift is blocking
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          blocking=false
+          case "${BASE_SHA}" in
+            "" | 0000000000000000000000000000000000000000) ;;
+            *)
+              if git diff --name-only "${BASE_SHA}"...HEAD | grep -q '^bundle/'; then
+                blocking=true
+              fi
+              ;;
+          esac
+          case "${REF_NAME}" in
+            release-* | downstream) blocking=true ;;
+          esac
+          echo "blocking=${blocking}" >> "${GITHUB_OUTPUT}"
+          echo "bundle drift is blocking: ${blocking} (ref=${REF_NAME})"
+      - name: Ensure PyYAML
+        run: python3 -c 'import yaml' || python3 -m pip install --user --break-system-packages pyyaml
+      - name: Verify bundle/ is not missing what config/ requires
+        continue-on-error: ${{ steps.scope.outputs.blocking != 'true' }}
+        env:
+          BUNDLE_DRIFT_ADVISORY: ${{ steps.scope.outputs.blocking != 'true' }}
+        run: hack/verify-bundle-drift.sh --check
+
   unit-tests:
     runs-on: ubuntu-latest
     steps:
