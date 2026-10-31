@@ -570,6 +570,13 @@ spec:
               verbs:
                 - get
                 - list
+            - apiGroups:
+                - machine.openshift.io
+              resources:
+                - machines
+              verbs:
+                - get
+                - list
           serviceAccountName: koku-metrics-controller-manager
       deployments:
         - label:

@@ -766,6 +766,11 @@ func (r *MetricsConfigReconciler) setAuthAndUpload(ctx context.Context, cr *metr
 // +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list
 // +kubebuilder:rbac:groups=instancetype.kubevirt.io,resources=virtualmachineclusterinstancetypes;virtualmachineclusterpreferences,verbs=get;list
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list
+// The Machines read is a dynamic-client call from internal/collector (machineset_name
+// enrichment), not a controller watch - so nothing here would fail without it. It
+// still needs a marker: config/rbac/role.yaml is generated from this list, and a
+// hand-added rule is deleted by the next `make manifests`.
+// +kubebuilder:rbac:groups=machine.openshift.io,resources=machines,verbs=get;list
 // +kubebuilder:rbac:groups=core,namespace=koku-metrics-operator,resources=pods;services;services/finalizers;endpoints;persistentvolumeclaims;events;configmaps;secrets;serviceaccounts,verbs=create;delete;get;list;patch;update;watch
 // +kubebuilder:rbac:groups=apps,namespace=koku-metrics-operator,resources=deployments,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheuses/api,verbs=get;create;update

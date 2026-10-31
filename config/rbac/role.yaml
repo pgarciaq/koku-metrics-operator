@@ -68,6 +68,13 @@ rules:
   - get
   - list
 - apiGroups:
+  - machine.openshift.io
+  resources:
+  - machines
+  verbs:
+  - get
+  - list
+- apiGroups:
   - monitoring.coreos.com
   resources:
   - prometheuses/api
