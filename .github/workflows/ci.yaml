@@ -3,10 +3,15 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
+  # Phase branches are pushed to directly and only occasionally opened as PRs, so
+  # without this their history is never checked: a hand-edited config/rbac/role.yaml
+  # (verify-manifests) or a red unit-test baseline lands with no run at all, and the
+  # first signal is the PR — or the cluster.
   push:
     branches:
       - downstream
       - main
+      - 'pgarciaq-rosocp-superpowers-*'
 
 jobs:
 
