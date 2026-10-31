@@ -149,6 +149,13 @@ spec:
                       DisableMetricsCollectionResourceOptimization is a field of CostManagementMetricsConfig to represent whether or not the operator will generate
                       reports for resource-optimization metrics. The default is false.
                     type: boolean
+                  disable_snapshot_collection:
+                    default: false
+                    description: |-
+                      DisableSnapshotCollection is a field of CostManagementMetricsConfig to represent whether or not the operator will collect
+                      VolumeSnapshot inventory from the cluster. When true, snapshot collection is skipped even if the VolumeSnapshot CRD is
+                      installed. The default is false.
+                    type: boolean
                   service_address:
                     default: https://thanos-querier.openshift-monitoring.svc:9091
                     description: |-
@@ -937,6 +944,32 @@ spec:
                       to represent the month for which reports are being generated.
                     type: string
                 type: object
+              snapshot:
+                description: Snapshot represents the status of VolumeSnapshot inventory
+                  collection.
+                properties:
+                  crd_available:
+                    description: CRDAvailable indicates whether the snapshot.storage.k8s.io
+                      CRD is installed on the cluster.
+                    type: boolean
+                  error:
+                    description: CollectionError is the error message from the last
+                      collection attempt (empty if successful).
+                    type: string
+                  last_successful_collection_time:
+                    description: LastSuccessfulCollectionTime is the time of the last
+                      successful snapshot inventory collection.
+                    format: date-time
+                    nullable: true
+                    type: string
+                  snapshot_count:
+                    description: SnapshotCount is the number of VolumeSnapshot objects
+                      found in the last collection.
+                    format: int64
+                    type: integer
+                required:
+                - crd_available
+                type: object
               source:
                 description: source represents the observed state of the integration
                   on console.redhat.com.
@@ -986,6 +1019,118 @@ spec:
                     description: VolumeType is the string representation of the volume
                       type.
                     type: string
+                type: object
+              topology:
+                description: |-
+                  Topology holds observed cluster topology facts for HCP/fleet
+                  classification (W0, #406). It is embedded in manifest.json via cr_status.
+                properties:
+                  collectionError:
+                    description: |-
+                      CollectionError names the first unreadable API during collection
+                      (empty on success). Mirrors the Snapshot pattern.
+                    type: string
+                  controlPlaneTopology:
+                    description: |-
+                      ControlPlaneTopology is Infrastructure.status.controlPlaneTopology
+                      (e.g. HighlyAvailable, External, SingleReplica). Empty when unreadable.
+                      Free string on purpose: upstream may add modes we must not reject.
+                    type: string
+                  hcpSnapshot:
+                    description: |-
+                      HCPSnapshot carries the report-scoped namespace-to-HostedCluster mapping
+                      (#622/#633). One entry per labeled HCP namespace, sorted by namespace.
+                      Empty on clusters without the HyperShift APIs and on pre-snapshot
+                      operators. Backend field names are handshake-critical (see the JSON
+                      contract test): renames must update both sides plus the shared fixture.
+                    items:
+                      description: |-
+                        HCPSnapshotEntry pins one HCP namespace to one hosted incarnation as
+                        observed live at collection time. UIDs establish incarnation so a recreated
+                        HostedCluster reusing a namespace name cannot inherit history. Entries with
+                        Complete=false (or empty HostedClusterID) must not associate
+                        recommendations; Diagnostics names the failed read.
+                      properties:
+                        complete:
+                          description: Complete is false when any required inventory
+                            read failed.
+                          type: boolean
+                        diagnostics:
+                          description: Diagnostics names the failed reads for incomplete
+                            entries.
+                          type: string
+                        hcTier:
+                          description: |-
+                            HcTier is the HostedCluster's insights.cost-management/hc-tier label
+                            value, verbatim (empty when the label is absent). W8 declared
+                            classification (ros-ocp-backend #715/#716, ADR-0348); the operator
+                            interprets nothing — ROS reads it latest-wins.
+                          type: string
+                        hcUID:
+                          description: HcUID is the HostedCluster object UID (incarnation
+                            signal).
+                          type: string
+                        hcpNamespace:
+                          description: HCPNamespace is the management-cluster namespace
+                            serving the HC.
+                          type: string
+                        hcpUID:
+                          description: HcpUID is the HostedControlPlane object UID
+                            (incarnation signal).
+                          type: string
+                        hostedClusterID:
+                          description: |-
+                            HostedClusterID is HostedCluster spec.clusterID, cross-checked against
+                            exactly one live HostedCluster. Empty means unproven.
+                          type: string
+                        namespaceCreatedAt:
+                          description: NamespaceCreatedAt is the HCP Namespace creation
+                            time (RFC3339).
+                          type: string
+                        namespaceUID:
+                          description: NamespaceUID is the HCP Namespace object UID
+                            (recreation signal).
+                          type: string
+                        observedAt:
+                          description: ObservedAt is the collection observation time
+                            (RFC3339).
+                          type: string
+                      required:
+                      - hcpNamespace
+                      type: object
+                    type: array
+                  hostedClusterCount:
+                    description: |-
+                      HostedClusterCount is the number of HostedCluster objects visible to the
+                      operator. Zero on clusters without the HyperShift APIs.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  hostedControlPlaneNamespaces:
+                    description: |-
+                      HostedControlPlaneNamespaces lists namespaces labeled
+                      hypershift.openshift.io/hosted-control-plane=true, sorted. Empty is valid.
+                    items:
+                      type: string
+                    type: array
+                  managedByHypershift:
+                    description: |-
+                      ManagedByHypershift is true when the Infrastructure object carries the
+                      hypershift.openshift.io/managed label with value "true".
+                    type: boolean
+                  masterNodes:
+                    description: MasterNodes counts nodes bearing a master or control-plane
+                      role label.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  workerNodes:
+                    description: |-
+                      WorkerNodes counts nodes bearing the worker role label. Dual-labeled
+                      (compact) nodes increment both counters by design.
+                    format: int32
+                    minimum: 0
+                    type: integer
                 type: object
               upload:
                 description: Upload is a field of CostManagementMetricsConfig to represent

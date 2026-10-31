@@ -497,10 +497,18 @@ spec:
               resources:
                 - configmaps
                 - namespaces
+                - nodes
               verbs:
                 - get
                 - list
                 - watch
+            - apiGroups:
+                - ""
+              resources:
+                - persistentvolumeclaims
+              verbs:
+                - get
+                - list
             - apiGroups:
                 - ""
               resources:
@@ -511,10 +519,42 @@ spec:
                 - config.openshift.io
               resources:
                 - clusterversions
+                - infrastructures
               verbs:
                 - get
                 - list
                 - watch
+            - apiGroups:
+                - hypershift.openshift.io
+              resources:
+                - hostedclusters
+                - hostedcontrolplanes
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - hypershift.openshift.io
+              resources:
+                - nodepools
+              verbs:
+                - get
+                - list
+            - apiGroups:
+                - instancetype.kubevirt.io
+              resources:
+                - virtualmachineclusterinstancetypes
+                - virtualmachineclusterpreferences
+              verbs:
+                - get
+                - list
+            - apiGroups:
+                - kubevirt.io
+              resources:
+                - virtualmachines
+              verbs:
+                - get
+                - list
             - apiGroups:
                 - monitoring.coreos.com
               resources:
@@ -523,6 +563,13 @@ spec:
                 - create
                 - get
                 - update
+            - apiGroups:
+                - snapshot.storage.k8s.io
+              resources:
+                - volumesnapshots
+              verbs:
+                - get
+                - list
           serviceAccountName: koku-metrics-controller-manager
       deployments:
         - label:
