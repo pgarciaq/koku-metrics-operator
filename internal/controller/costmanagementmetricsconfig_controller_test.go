@@ -1366,18 +1366,45 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 		It("2day retention period - successfully queried but there was no data on first day, but data on second", func() {
 			resetReconciler(WithSecretOverride(os.Getenv("SECRET_ABSPATH")))
 
+			// Pin the clock: the expectations below are an exact hour sequence, so a
+			// real clock would drift between registering them and the reconcile loop.
+			// 12:34 keeps the last queried hour clear of the day boundary that the
+			// sibling "end of 24 hr test" spec exercises.
+			now = func() time.Time { return time.Date(2026, 3, 10, 12, 34, 0, 0, time.UTC) }
+
 			testConfigMap.Data = map[string]string{"config.yaml": "prometheusK8s:\n  retention: 2d"}
 			createObject(ctx, testConfigMap)
 
-			t := time.Now().UTC().Truncate(1 * time.Hour).Add(-1 * time.Hour)
-			t2 := t.Truncate(24 * time.Hour).Add(-24 * time.Hour) // midnight yesterday
+			t := now().UTC().Truncate(1 * time.Hour).Add(-1 * time.Hour) // 2026-03-10T11:00Z, start of the previous full hour
+			t2 := t.Truncate(24 * time.Hour).Add(-48 * time.Hour)        // 2026-03-08T00:00Z, the start of 2d retention
 			timeRangeInitial := promv1.Range{
 				Start: t2,
 				End:   t2.Add(59*time.Minute + 59*time.Second),
 				Step:  time.Minute,
 			}
+			// Day 1 holds no data, so the controller abandons it after its first hour.
 			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRangeInitial, gomock.Any()).Return(model.Matrix{}, nil, nil).MinTimes(1)
-			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablecpucores), nil, nil).MinTimes(1)
+
+			// Day 2 onwards holds data, and every hour up to the previous full hour is
+			// queried; a range outside this set falls through to the empty catch-all and
+			// reads as ErrNoData, which is what a wrong retention boundary would produce.
+			for hour := t2.AddDate(0, 0, 1); !hour.After(t); hour = hour.Add(time.Hour) {
+				hourRange := promv1.Range{
+					Start: hour,
+					End:   hour.Add(59*time.Minute + 59*time.Second),
+					Step:  time.Minute,
+				}
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_allocatable"], hourRange, gomock.Any()).Return(asMatrix(nodeAllocMatrixJSON), nil, nil).MinTimes(1)
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_capacity"], hourRange, gomock.Any()).Return(asMatrix(nodeCapMatrixJSON), nil, nil).MinTimes(1)
+			}
+			// Every other query (pod, namespace, storage, node role/labels) keeps the
+			// historical shared fixture so their reports carry a row: packaging reads the
+			// pod report for its manifest interval and fails on a header-only file. It
+			// carries no `resource` label, so an unexpected node query still pivots to
+			// zero nodes and reads as ErrNoData.
+			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablecpucores), nil, nil).AnyTimes()
+			// Cost collection also issues instant queries (storage/VM name correlation).
+			mockpconn.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any()).Return(model.Vector{}, nil, nil).AnyTimes()
 
 			instCopy.Spec.PrometheusConfig.CollectPreviousData = &trueDef
 			instCopy.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization = &trueDef
@@ -1391,24 +1418,50 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 				return fetched.Status.ClusterID != ""
 			}, timeout, interval).Should(BeTrue())
 
+			Expect(fetched.Status.Reports.DataCollectionMessage).To(BeEmpty())
 			Expect(fetched.Status.Reports.DataCollected).To(BeTrue())
 		})
 		It("2day retention period - end of 24 hr test", func() {
 			resetReconciler(WithSecretOverride(os.Getenv("SECRET_ABSPATH")))
-			now = func() time.Time { return time.Now().Truncate(24 * time.Hour).Add(24 * time.Hour) }
+
+			// Midnight of the day after the last full day: the previous full hour is
+			// 23:00, the "end of 24 hr" case that moves the files out of the data dir
+			// and packages them unconditionally.
+			now = func() time.Time { return time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC) }
 
 			testConfigMap.Data = map[string]string{"config.yaml": "prometheusK8s:\n  retention: 2d"}
 			createObject(ctx, testConfigMap)
 
-			t := now().UTC().Truncate(1 * time.Hour).Add(-1 * time.Hour)
-			t2 := t.Truncate(24 * time.Hour).Add(-24 * time.Hour) // midnight yesterday
+			t := now().UTC().Truncate(1 * time.Hour).Add(-1 * time.Hour) // 2026-03-10T23:00Z, start of the previous full hour
+			t2 := t.Truncate(24 * time.Hour).Add(-48 * time.Hour)        // 2026-03-08T00:00Z, the start of 2d retention
 			timeRangeInitial := promv1.Range{
 				Start: t2,
 				End:   t2.Add(59*time.Minute + 59*time.Second),
 				Step:  time.Minute,
 			}
+			// Day 1 holds no data, so the controller abandons it after its first hour.
 			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRangeInitial, gomock.Any()).Return(model.Matrix{}, nil, nil).MinTimes(1)
-			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablecpucores), nil, nil).MinTimes(1)
+
+			// Day 2 onwards holds data, every hour up to and including 23:00 of the last
+			// day; a range outside this set falls through to the empty catch-all and
+			// reads as ErrNoData.
+			for hour := t2.AddDate(0, 0, 1); !hour.After(t); hour = hour.Add(time.Hour) {
+				hourRange := promv1.Range{
+					Start: hour,
+					End:   hour.Add(59*time.Minute + 59*time.Second),
+					Step:  time.Minute,
+				}
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_allocatable"], hourRange, gomock.Any()).Return(asMatrix(nodeAllocMatrixJSON), nil, nil).MinTimes(1)
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_capacity"], hourRange, gomock.Any()).Return(asMatrix(nodeCapMatrixJSON), nil, nil).MinTimes(1)
+			}
+			// Every other query (pod, namespace, storage, node role/labels) keeps the
+			// historical shared fixture so their reports carry a row: packaging reads the
+			// pod report for its manifest interval and fails on a header-only file. It
+			// carries no `resource` label, so an unexpected node query still pivots to
+			// zero nodes and reads as ErrNoData.
+			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablecpucores), nil, nil).AnyTimes()
+			// Cost collection also issues instant queries (storage/VM name correlation).
+			mockpconn.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any()).Return(model.Vector{}, nil, nil).AnyTimes()
 
 			instCopy.Spec.PrometheusConfig.CollectPreviousData = &trueDef
 			instCopy.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization = &trueDef
@@ -1422,6 +1475,7 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 				return fetched.Status.Prometheus.LastQuerySuccessTime.Equal(&metav1.Time{Time: t})
 			}, timeout, interval).Should(BeTrue())
 
+			Expect(fetched.Status.Reports.DataCollectionMessage).To(BeEmpty())
 			Expect(fetched.Status.Reports.DataCollected).To(BeTrue())
 			Expect(len(fetched.Status.Packaging.PackagedFiles)).To(Equal(1))
 			Expect(fetched.Status.Packaging.ReportCount).ToNot(BeNil())
@@ -1473,14 +1527,10 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 			timeROS4 := timeROS3.Add(15 * time.Minute)
 			// this mock is tightly coupled to the order in which the node queries are run and the first pod query
 			gomock.InOrder(
-				// node-allocatable-cpu-cores
-				mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRange, gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablecpucores), nil, nil),
-				// node-allocatable-memory-bytes
-				mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRange, gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablememorybytes), nil, nil),
-				// node-capacity-cpu-cores
-				mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRange, gomock.Any()).Return(asModelMatrix(metricjson, nodecapacitycpucores), nil, nil),
-				// node-capacity-memory-bytes
-				mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRange, gomock.Any()).Return(asModelMatrix(metricjson, nodecapacitymemorybytes), nil, nil),
+				// node-allocatable, pivoted by the `resource` label (cpu, memory, gpu)
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_allocatable"], timeRange, gomock.Any()).Return(asMatrix(nodeAllocMatrixJSON), nil, nil),
+				// node-capacity, pivoted by the `resource` label (cpu, memory, pods)
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_capacity"], timeRange, gomock.Any()).Return(asMatrix(nodeCapMatrixJSON), nil, nil),
 				// node-role
 				mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRange, gomock.Any()).Return(asModelMatrix(metricjson, noderole), nil, nil),
 				// node-labels
@@ -1516,18 +1566,40 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 			// slow test, always run this one last
 			resetReconciler(WithSecretOverride(os.Getenv("SECRET_ABSPATH")))
 
+			// Pin the clock to the start of a day: endTime is the previous full hour,
+			// 23:00, so the run ends with the end-of-day MoveFiles branch on top of the
+			// 96-hour packaging, which is what exercises MaxReports trimming.
+			now = func() time.Time { return time.Date(2026, 3, 20, 0, 0, 0, 0, time.UTC) }
+
 			testConfigMap.Data = map[string]string{"config.yaml": "prometheusK8s:\n  retention: 8d"}
 			createObject(ctx, testConfigMap)
 
-			t := metav1.Now().UTC().Truncate(1 * time.Hour).Add(-1 * time.Hour)
-			t2 := t.Truncate(24 * time.Hour).Add(-24 * 8 * time.Hour) // midnight 8 days ago
+			t := now().UTC().Truncate(1 * time.Hour).Add(-1 * time.Hour) // 2026-03-19T23:00Z, start of the previous full hour
+			t2 := t.Truncate(24 * time.Hour).Add(-24 * 8 * time.Hour)    // 2026-03-11T00:00Z, midnight 8 days ago
 			timeRangeInitial := promv1.Range{
 				Start: t2,
 				End:   t2.Add(59*time.Minute + 59*time.Second),
 				Step:  time.Minute,
 			}
+			// Day 1 holds no data, so the controller abandons it after its first hour.
 			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRangeInitial, gomock.Any()).Return(model.Matrix{}, nil, nil).MinTimes(1)
-			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablecpucores), nil, nil).MinTimes(1)
+
+			// Day 2 onwards holds data, and every hour up to the previous full hour is
+			// queried; a range outside this set falls through to the fixture below and,
+			// carrying no `resource` label, reads as ErrNoData.
+			for hour := t2.AddDate(0, 0, 1); !hour.After(t); hour = hour.Add(time.Hour) {
+				hourRange := promv1.Range{
+					Start: hour,
+					End:   hour.Add(59*time.Minute + 59*time.Second),
+					Step:  time.Minute,
+				}
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_allocatable"], hourRange, gomock.Any()).Return(asMatrix(nodeAllocMatrixJSON), nil, nil).MinTimes(1)
+				mockpconn.EXPECT().QueryRange(gomock.Any(), collector.QueryMap["cost:node_capacity"], hourRange, gomock.Any()).Return(asMatrix(nodeCapMatrixJSON), nil, nil).MinTimes(1)
+			}
+			// Every other query keeps the historical shared fixture so their reports carry a
+			// row: packaging reads the pod report for its manifest interval.
+			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(asModelMatrix(metricjson, nodeallocatablecpucores), nil, nil).AnyTimes()
+			mockpconn.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any()).Return(model.Vector{}, nil, nil).AnyTimes()
 
 			instCopy.Spec.Packaging.MaxReports = 2
 			instCopy.Spec.PrometheusConfig.CollectPreviousData = &trueDef
