@@ -98,6 +98,9 @@ type hcObserved struct {
 	Name      string
 	UID       string
 	ClusterID string
+	// Tier is the HostedCluster's insights.cost-management/hc-tier label
+	// value, verbatim (#715). Empty when the label is absent.
+	Tier string
 }
 
 type nsObserved struct {
@@ -156,11 +159,18 @@ func buildHCPSnapshot(hcps []hcpObserved, hcs []hcObserved, nsInfos map[string]n
 		entry.HostedClusterID = inNS[0].ClusterID
 		entry.HcUID = matches[0].UID
 		entry.HcpUID = inNS[0].UID
+		entry.HcTier = matches[0].Tier
 		entry.Complete = true
 		out = append(out, entry)
 	}
 	return out
 }
+
+// hcTierLabelKey is the W8 declared-classification label read from
+// HostedCluster objects (#715, ADR-0348): the established ROS label family
+// (KMO's collectors already read insights.cost-management/optimizations on
+// namespaces).
+const hcTierLabelKey = "insights.cost-management/hc-tier"
 
 // listHCPObserved lists HostedControlPlane objects (namespace, name, UID,
 // spec.clusterID). Missing APIs yield empty + nil (pre-HyperShift); any other
@@ -203,11 +213,13 @@ func listHCObserved(ctx context.Context, c client.Client) ([]hcObserved, error) 
 	for i := range list.Items {
 		obj := &list.Items[i]
 		clusterID, _, _ := unstructured.NestedString(obj.Object, "spec", "clusterID")
+		tier, _, _ := unstructured.NestedString(obj.Object, "metadata", "labels", hcTierLabelKey)
 		out = append(out, hcObserved{
 			Namespace: obj.GetNamespace(),
 			Name:      obj.GetName(),
 			UID:       string(obj.GetUID()),
 			ClusterID: clusterID,
+			Tier:      tier,
 		})
 	}
 	return out, nil

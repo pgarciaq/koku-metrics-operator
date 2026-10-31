@@ -207,6 +207,21 @@ func TestBuildHCPSnapshot_Matrix(t *testing.T) {
 		want      []metricscfgv1beta1.HCPSnapshotEntry
 	}{
 		{
+			name: "labeled HC carries the tier verbatim on the complete entry",
+			hcps: []hcpObserved{hcp("hc01-infra-hc01", "hc01", "uid-hcp-1", "d5d3-1")},
+			hcs: []hcObserved{{
+				Namespace: "hc01-infra", Name: "hc01", UID: "uid-hc-1", ClusterID: "d5d3-1",
+				Tier: "non-prod",
+			}},
+			labeledNS: []string{"hc01-infra-hc01"},
+			nsInfos:   hcpTestNSInfos("hc01-infra-hc01"),
+			want: []metricscfgv1beta1.HCPSnapshotEntry{func() metricscfgv1beta1.HCPSnapshotEntry {
+				e := complete("hc01-infra-hc01", "d5d3-1", "uid-hc-1", "uid-hcp-1")
+				e.HcTier = "non-prod"
+				return e
+			}()},
+		},
+		{
 			name:      "single HCP cross-checked to one HC",
 			hcps:      []hcpObserved{hcp("hc01-infra-hc01", "hc01", "uid-hcp-1", "d5d3-1")},
 			hcs:       []hcObserved{hc("hc01-infra", "hc01", "uid-hc-1", "d5d3-1")},
@@ -347,7 +362,7 @@ func TestHCPSnapshot_JSONHandshake(t *testing.T) {
 		HCPNamespace: "hc01-infra-hc01", HostedClusterID: "d5d31999-89ed-4c13-b5e8-c9193f62e630",
 		HcUID: "uid-hc-1", HcpUID: "uid-hcp-1", NamespaceUID: "uid-ns-1",
 		NamespaceCreatedAt: "2026-09-26T19:10:57Z", ObservedAt: "2026-09-28T12:00:00Z",
-		Complete: true,
+		Complete: true, HcTier: "non-prod",
 	}
 	raw, err := json.Marshal(metricscfgv1beta1.ClusterTopologyStatus{
 		HostedControlPlaneNamespaces: []string{"hc01-infra-hc01"},
@@ -368,13 +383,16 @@ func TestHCPSnapshot_JSONHandshake(t *testing.T) {
 	if !ok {
 		t.Fatalf("snapshot entry not an object in %s", raw)
 	}
-	for _, key := range []string{"hcpNamespace", "hostedClusterID", "hcUID", "hcpUID", "namespaceUID", "namespaceCreatedAt", "observedAt", "complete"} {
+	for _, key := range []string{"hcpNamespace", "hostedClusterID", "hcUID", "hcpUID", "namespaceUID", "namespaceCreatedAt", "observedAt", "complete", "hcTier"} {
 		if _, ok := fields[key]; !ok {
 			t.Errorf("wire key %q missing in %s", key, raw)
 		}
 	}
 	if fields["hostedClusterID"] != "d5d31999-89ed-4c13-b5e8-c9193f62e630" {
 		t.Errorf("hostedClusterID mismatch in %s", raw)
+	}
+	if fields["hcTier"] != "non-prod" {
+		t.Errorf("hcTier mismatch in %s", raw)
 	}
 }
 
@@ -462,6 +480,35 @@ func TestCollectClusterTopology_HCPSnapshotHappyPath(t *testing.T) {
 		t.Fatalf("HCPSnapshot length = %d, want 1", len(got.HCPSnapshot))
 	}
 	assert_HCPSnapshotComplete(t, got.HCPSnapshot[0], "hc01-infra-hc01", "d5d3-1", "uid-hc-1", "uid-hcp-1")
+	if got.HCPSnapshot[0].HcTier != "" {
+		t.Errorf("unlabeled fixture HC must yield empty HcTier, got %q", got.HCPSnapshot[0].HcTier)
+	}
+}
+
+// TestCollectClusterTopology_HCTierLabel proves the #715 label read through
+// the full client path: the HostedCluster's insights.cost-management/hc-tier
+// label value rides the complete snapshot entry verbatim.
+func TestCollectClusterTopology_HCTierLabel(t *testing.T) {
+	c := hcpCollectFixture(t, "")
+	hc := &unstructured.Unstructured{}
+	hc.SetGroupVersionKind(schema.GroupVersionKind{Group: "hypershift.openshift.io", Version: "v1beta1", Kind: "HostedCluster"})
+	if err := c.Get(context.Background(), client.ObjectKey{Namespace: "hc01-infra", Name: "hc01"}, hc); err != nil {
+		t.Fatalf("get fixture HC: %v", err)
+	}
+	if err := unstructured.SetNestedField(hc.Object, "non-prod", "metadata", "labels", "insights.cost-management/hc-tier"); err != nil {
+		t.Fatalf("set tier label: %v", err)
+	}
+	if err := c.Update(context.Background(), hc); err != nil {
+		t.Fatalf("label fixture HC: %v", err)
+	}
+	got := collectClusterTopology(context.Background(), c)
+	if len(got.HCPSnapshot) != 1 {
+		t.Fatalf("HCPSnapshot length = %d, want 1", len(got.HCPSnapshot))
+	}
+	assert_HCPSnapshotComplete(t, got.HCPSnapshot[0], "hc01-infra-hc01", "d5d3-1", "uid-hc-1", "uid-hcp-1")
+	if got.HCPSnapshot[0].HcTier != "non-prod" {
+		t.Errorf("HcTier = %q, want %q (label read through the client path)", got.HCPSnapshot[0].HcTier, "non-prod")
+	}
 	if got.CollectionError != "" {
 		t.Errorf("CollectionError = %q, want empty", got.CollectionError)
 	}

@@ -1057,6 +1057,13 @@ spec:
                           description: Diagnostics names the failed reads for incomplete
                             entries.
                           type: string
+                        hcTier:
+                          description: |-
+                            HcTier is the HostedCluster's insights.cost-management/hc-tier label
+                            value, verbatim (empty when the label is absent). W8 declared
+                            classification (ros-ocp-backend #715/#716, ADR-0348); the operator
+                            interprets nothing — ROS reads it latest-wins.
+                          type: string
                         hcUID:
                           description: HcUID is the HostedCluster object UID (incarnation
                             signal).
