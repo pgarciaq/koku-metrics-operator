@@ -69,6 +69,21 @@ make verify-manifests   # verify CRD/RBAC manifests are up to date
   any other branch is checked when a PR exists. Confirm with
   `gh run list --repo pgarciaq/koku-metrics-operator --event push`.
 
+## Branch bundle deploys
+
+- `hack/retarget-bundle.sh <image-ref>` writes the CSV's three image sites and
+  re-reads them. OLM deploys the deployment container's image; the
+  `containerImage` annotation and `relatedImages` only look right, so retargeting
+  two of three installs upstream's image under a CSV that reports `Succeeded`.
+- `hack/build-index-image.sh <configs-dir> <image-ref>` generates the Dockerfile
+  with **both** stages pinned (`opm generate dockerfile` defaults both to
+  `:latest`; `-i` pins only the final stage), validates the catalog, builds, and
+  requires the `serving registry` log line. An index image with no `CMD` runs
+  `opm` with no arguments, exits 0, and leaves the catalog pod in
+  `CrashLoopBackOff` with empty logs.
+- Neither script pushes or edits `bundle/` by default, and `make hack-selftests`
+  pins both guards without a cluster or a container runtime.
+
 ## Contributor Workflow (Pre-PR)
 
 - Minimum local check before commit: `make fmt && make test`

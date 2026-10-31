@@ -164,6 +164,15 @@ verify-install: ## Verify an install on the current cluster actually reconciles 
 verify-install-selftest: ## Regression-test the denial classifier in verify-install.sh (no cluster needed).
 	./hack/verify-install.selftest.sh
 
+# The bundle and index helpers have no cluster to fail on: a CSV whose
+# deployment still names the old image installs a green CSV running the wrong
+# binary, and a Dockerfile with no CMD builds an index that exits 0 in under a
+# second. Neither is visible in review, so both guards are pinned by fixtures.
+.PHONY: hack-selftests
+hack-selftests: yq ## Regression-test the hack/ bundle and index helpers (no cluster, no podman).
+	./hack/retarget-bundle.selftest.sh
+	./hack/build-index-image.selftest.sh
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 .PHONY: test

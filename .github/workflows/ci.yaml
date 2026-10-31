@@ -45,6 +45,28 @@ jobs:
       - name: Denial classifier self-test
         run: make verify-install-selftest
 
+  # Same reasoning one level out: the bundle retarget and the index Dockerfile
+  # checks exist because their failures are silent (a CSV installs green under
+  # the wrong image; an index with no CMD exits 0 and leaves the catalog pod in
+  # CrashLoopBackOff with empty logs), so their guards are pinned by fixtures.
+  # Neither guard needs a cluster or a container runtime.
+  hack-selftests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      # `make hack-selftests` depends on the `yq` target, which derives the
+      # download's OS/ARCH from `go env`; pin Go rather than rely on whatever
+      # the runner image happens to ship.
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Shell syntax
+        run: bash -n hack/retarget-bundle.sh hack/retarget-bundle.selftest.sh hack/build-index-image.sh hack/build-index-image.selftest.sh
+      - name: Bundle retarget and index Dockerfile self-tests
+        run: make hack-selftests
+
   # bundle/ is regenerated at release time from the release branch, so it can lag
   # config/ for a whole release cycle. That lag is a real defect (a branch image
   # installed under a stale bundle gets `forbidden`, then an empty CR status) but
