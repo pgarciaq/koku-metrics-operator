@@ -60,12 +60,21 @@ make verify-manifests   # verify CRD/RBAC manifests are up to date
 - `make verify-manifests` (runs `make manifests`, diffs `config/`) is the check
   that fails a hand edit. `hack/verify-bundle-drift.sh` only warns, and is
   advisory off release refs.
-- A push is not a CI run: `ci.yaml` triggers on push only for `downstream`/`main`.
-  Confirm with `gh run list --repo pgarciaq/koku-metrics-operator`.
+- A push runs CI only for `downstream`, `main`, and `pgarciaq-rosocp-superpowers-*`;
+  any other branch is checked when a PR exists. Confirm with
+  `gh run list --repo pgarciaq/koku-metrics-operator --event push`.
 
 ## Contributor Workflow (Pre-PR)
 
 - Minimum local check before commit: `make fmt && make test`
+- `make lint` is not CI's lint. The pre-commit hook runs
+  `golangci-lint run --new-from-rev HEAD --fix`, so it only reports issues on
+  lines changed since `HEAD`, while `validate-pr` runs plain `golangci-lint run`.
+  Removing the last *use* of a variable leaves the `unused` finding on an
+  unchanged declaration line and passes locally, so run what CI runs before
+  pushing that kind of change: `golangci-lint run ./...`. `.golangci.yaml` sets
+  `issues.fix: true`, so that run may autofix unrelated files — revert anything
+  outside your change.
 - Recommended pre-PR checklist:
   - `make fmt`
   - `make lint`
