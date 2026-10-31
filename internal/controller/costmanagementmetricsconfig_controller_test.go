@@ -284,7 +284,7 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 		testConfigMap *corev1.ConfigMap
 		instCopy      *metricscfgv1beta1.MetricsConfig
 		testPVC       *corev1.PersistentVolumeClaim
-		checkPVC      bool = true
+		checkPVC      = true
 	)
 
 	ctx := context.Background()
@@ -1564,6 +1564,14 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 		})
 		It("8day retention period - successfully queried but there was no data on first day, but data on all remaining days", func() {
 			// slow test, always run this one last
+			//
+			// Eight days of hourly collection is 192 report generations plus the
+			// 96-hour packaging and trimming that this spec exists to exercise. That
+			// outruns the 60s suite budget under QEMU emulation (the arm64 and ppc64le
+			// CI jobs), where a slow reconcile also draws client rate-limiter
+			// requeues. Only the wait grows here; every assertion is unchanged.
+			const slowTimeout = 5 * time.Minute
+
 			resetReconciler(WithSecretOverride(os.Getenv("SECRET_ABSPATH")))
 
 			// Pin the clock to the start of a day: endTime is the previous full hour,
@@ -1612,7 +1620,7 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 			Eventually(func() bool {
 				_ = k8sClient.Get(ctx, types.NamespacedName{Name: instCopy.Name, Namespace: namespace}, fetched)
 				return fetched.Status.Prometheus.LastQuerySuccessTime.Equal(&metav1.Time{Time: t})
-			}, timeout, interval).Should(BeTrue())
+			}, slowTimeout, interval).Should(BeTrue())
 
 			Expect(fetched.Status.Reports.DataCollected).To(BeTrue())
 			Expect(len(fetched.Status.Packaging.PackagedFiles)).To(Equal(2))
