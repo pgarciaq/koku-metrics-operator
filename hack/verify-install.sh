@@ -21,10 +21,19 @@
 # Hard assertions (satisfied by the first successful reconcile)
 #   * OLM-managed: the CSV is Succeeded (skipped with --no-olm / non-OLM install)
 #   * the controller Deployment has a ready replica
-#   * no authorization failure is logged for the operator's own service account
+#   * no authorization failure in the reconcile path (see "Best-effort denials")
 #   * status.prometheus.prometheus_configured and .prometheus_connected are true
 #   * status.source.source_defined is true
 #   * status.topology.controlPlaneTopology is non-empty
+#
+# Best-effort denials (reported as a note, never a failure)
+#   Denials logged by a collector.* component are enrichment, not reconcile: the
+#   collector degrades to an empty result and the cycle completes. The
+#   machine.openshift.io/machines lookup is the live example - without that
+#   grant the CSV's machineset_name column is empty on every cycle, which is a
+#   data gap to fix on its own merits, not evidence of a broken install. Counting
+#   those as failures made this script red on healthy clusters for as long as the
+#   log window covered the last cycle, pointing at the wrong remedy.
 #
 # Soft assertions (reported; hard only with --require-upload)
 #   * status.upload.last_successful_upload_time is set
@@ -50,6 +59,9 @@
 #       --no-olm           skip the CSV check (non-OLM / `make deploy` installs)
 #       --no-wait          evaluate once, do not poll
 #       --context NAME     kubectl/oc context
+#       --classify-log FILE
+#                          internal: classify the lines in FILE and exit
+#                          (used by hack/verify-install.selftest.sh, needs no cluster)
 #   -v, --verbose          print every poll
 #   -h, --help
 #
@@ -71,9 +83,12 @@ CHECK_OLM=true
 WAIT=true
 VERBOSE=false
 CONTEXT=""
+CLASSIFY_LOG=""
 
+# Prints this file's header comment block. Bounded by the first statement rather
+# than by line numbers, so editing the header cannot silently truncate --help.
 usage() {
-	sed -n '2,56p' "${BASH_SOURCE[0]}" | sed -e 's/^# \{0,1\}//'
+	awk 'NR > 1 && /^set -o /{exit} NR > 1 {sub(/^# ?/, ""); print}' "${BASH_SOURCE[0]}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -114,6 +129,10 @@ while [[ $# -gt 0 ]]; do
 		CONTEXT="$2"
 		shift 2
 		;;
+	--classify-log)
+		CLASSIFY_LOG="$2"
+		shift 2
+		;;
 	-v | --verbose)
 		VERBOSE=true
 		shift
@@ -147,6 +166,42 @@ preflight_fail() {
 info() {
 	echo "  $*"
 }
+
+# --------------------------------------------------------------------------
+# authorization failures: stall vs best-effort
+# --------------------------------------------------------------------------
+# A denial is logged as "<ts>\t<LEVEL>\t<logger>\t<msg>...". The logger field is
+# what separates the two kinds:
+#
+#   * collector.*               best-effort enrichment - degrade to empty, cycle
+#                              completes (machineset_name, for example)
+#   * anything else             the reconcile/status path - the operator is
+#                              stalled, which is what leaves .status empty and
+#                              uploads nothing
+DENIAL_RE='is forbidden: User "system:serviceaccount:|cannot (list|get|watch) resource'
+BESTEFFORT_LOGGER_RE='^collector[.]'
+
+# classify_denials LOG_TEXT -> STALL_DENIAL_COUNT, BESTEFFORT_DENIAL_COUNT (+ samples)
+classify_denials() {
+	local denials
+	denials=$(printf '%s\n' "$1" | grep -E "$DENIAL_RE" || true)
+	STALL_DENIALS=$(printf '%s\n' "$denials" | awk -F'\t' -v re="$BESTEFFORT_LOGGER_RE" '$3 !~ re' || true)
+	BESTEFFORT_DENIALS=$(printf '%s\n' "$denials" | awk -F'\t' -v re="$BESTEFFORT_LOGGER_RE" '$3 ~ re' || true)
+	STALL_DENIAL_COUNT=$(printf '%s\n' "$STALL_DENIALS" | grep -c . || true)
+	BESTEFFORT_DENIAL_COUNT=$(printf '%s\n' "$BESTEFFORT_DENIALS" | grep -c . || true)
+	STALL_DENIAL_COUNT="${STALL_DENIAL_COUNT:-0}"
+	BESTEFFORT_DENIAL_COUNT="${BESTEFFORT_DENIAL_COUNT:-0}"
+	STALL_DENIAL_SAMPLE=$(printf '%s\n' "$STALL_DENIALS" | head -3 || true)
+	BESTEFFORT_DENIAL_SAMPLE=$(printf '%s\n' "$BESTEFFORT_DENIALS" | head -3 || true)
+}
+
+# Test hook: classify a captured log file without touching a cluster.
+if [[ -n "$CLASSIFY_LOG" ]]; then
+	[[ -r "$CLASSIFY_LOG" ]] || preflight_fail "cannot read $CLASSIFY_LOG"
+	classify_denials "$(cat "$CLASSIFY_LOG")"
+	echo "stall=${STALL_DENIAL_COUNT} besteffort=${BESTEFFORT_DENIAL_COUNT}"
+	exit 0
+fi
 
 # --------------------------------------------------------------------------
 # preflight
@@ -211,22 +266,18 @@ info "image: $DEPLOY_IMAGE"
 [[ "$DEPLOY_READY" -ge 1 ]] || fail "deployment $DEPLOY has no ready replica"
 
 # --------------------------------------------------------------------------
-# authorization failures in the operator log
+# authorization failures: scan the operator log
 # --------------------------------------------------------------------------
 scan_forbidden() {
-	local logs matches count
+	local logs
 	logs=$("${OC[@]}" logs -n "$NS" deploy/"$DEPLOY" --since="$SINCE" 2>/dev/null || true)
-	count=$(printf '%s\n' "$logs" |
-		grep -E "is forbidden: User \"system:serviceaccount:${NS}:|cannot (list|get|watch) resource" |
-		grep -c . || true)
-	FORBIDDEN_COUNT="${count:-0}"
-	FORBIDDEN_SAMPLE=$(printf '%s\n' "$logs" |
-		grep -E "is forbidden: User \"system:serviceaccount:${NS}:|cannot (list|get|watch) resource" |
-		head -3 || true)
+	classify_denials "$logs"
 }
 
-FORBIDDEN_COUNT=0
-FORBIDDEN_SAMPLE=""
+STALL_DENIAL_COUNT=0
+BESTEFFORT_DENIAL_COUNT=0
+STALL_DENIAL_SAMPLE=""
+BESTEFFORT_DENIAL_SAMPLE=""
 scan_forbidden
 
 # --------------------------------------------------------------------------
@@ -267,6 +318,18 @@ report_status() {
 		while IFS= read -r line; do info "$line"; done
 }
 
+# Best-effort denials are tolerated, not hidden: they explain a column that is
+# empty in the CSVs, which is a data gap worth knowing about while you are
+# already looking at this install.
+report_besteffort() {
+	[[ "${BESTEFFORT_DENIAL_COUNT:-0}" -gt 0 ]] || return 0
+	echo
+	echo "note: ${BESTEFFORT_DENIAL_COUNT} best-effort denial(s) in the last ${SINCE} (reconcile unaffected):"
+	printf '%s\n' "$BESTEFFORT_DENIAL_SAMPLE" | sed 's/^/  /'
+	echo "  a collector.* component degrades to an empty result, so the columns it"
+	echo "  fills stay empty (machineset_name is the current example)."
+}
+
 STATUS=""
 hard_failures=""
 deadline=$((SECONDS + TIMEOUT))
@@ -274,7 +337,7 @@ deadline=$((SECONDS + TIMEOUT))
 while true; do
 	STATUS=$(status_json)
 	hard_failures=""
-	[[ "$FORBIDDEN_COUNT" -eq 0 ]] || hard_failures="authorization failures in operator log ($FORBIDDEN_COUNT)"
+	[[ "$STALL_DENIAL_COUNT" -eq 0 ]] || hard_failures="authorization failures in the reconcile path ($STALL_DENIAL_COUNT)"
 	assert_true "$STATUS" "prometheus.prometheus_configured" || hard_failures+="${hard_failures:+, }status.prometheus.prometheus_configured is not true"
 	assert_true "$STATUS" "prometheus.prometheus_connected" || hard_failures+="${hard_failures:+, }status.prometheus.prometheus_connected is not true"
 	assert_true "$STATUS" "source.source_defined" || hard_failures+="${hard_failures:+, }status.source.source_defined is not true"
@@ -305,6 +368,7 @@ if [[ -z "$hard_failures" ]]; then
 	if ! assert_true "$STATUS" "upload.last_successful_upload_time"; then
 		info "note: no successful upload recorded yet (data path unproven; re-run with --require-upload to gate on it)"
 	fi
+	report_besteffort
 	exit 0
 fi
 
@@ -312,14 +376,15 @@ echo "FAIL: $hard_failures"
 echo
 report_status "$STATUS"
 echo
-if [[ "$FORBIDDEN_COUNT" -gt 0 ]]; then
-	echo "authorization failures logged in the last $SINCE:"
-	printf '%s\n' "$FORBIDDEN_SAMPLE" | sed 's/^/  /'
+if [[ "$STALL_DENIAL_COUNT" -gt 0 ]]; then
+	echo "authorization failures in the reconcile path (last $SINCE):"
+	printf '%s\n' "$STALL_DENIAL_SAMPLE" | sed 's/^/  /'
 	echo
 	echo "  next: hack/verify-bundle-drift.sh --check"
 	echo "        the installed bundle grants less than the code requires"
 	echo "        (a branch image installed under a stale bundle)"
 fi
+report_besteffort
 if [[ "$STATUS" == "{}" ]]; then
 	echo "the CR status is entirely empty: reconcile is not reaching its status write."
 	echo "  next: check the operator log for a stall ('Failed to watch', errors before"

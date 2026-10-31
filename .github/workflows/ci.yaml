@@ -26,6 +26,20 @@ jobs:
       - name: Verify generated Manifests are up to date
         run: make verify-manifests
 
+  # The install check reads `forbidden` lines and splits them into "reconcile is
+  # stalled" (fatal) and "a collector degraded" (note). That split is the whole
+  # value of the check and is invisible in review, so it is pinned by fixtures.
+  # Blocking on every ref: it needs no cluster and cannot flake.
+  verify-install-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+      - name: Shell syntax
+        run: bash -n hack/verify-install.sh hack/verify-install.selftest.sh
+      - name: Denial classifier self-test
+        run: make verify-install-selftest
+
   # bundle/ is regenerated at release time from the release branch, so it can lag
   # config/ for a whole release cycle. That lag is a real defect (a branch image
   # installed under a stale bundle gets `forbidden`, then an empty CR status) but

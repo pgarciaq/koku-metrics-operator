@@ -160,6 +160,10 @@ verify-bundle-drift: ## Verify bundle/ does not lack permissions or CRD fields t
 verify-install: ## Verify an install on the current cluster actually reconciles (KMO_NAMESPACE/KMO_CR_NAME).
 	./hack/verify-install.sh
 
+.PHONY: verify-install-selftest
+verify-install-selftest: ## Regression-test the denial classifier in verify-install.sh (no cluster needed).
+	./hack/verify-install.selftest.sh
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 .PHONY: test
