@@ -86,6 +86,16 @@ make verify-manifests   # verify CRD/RBAC manifests are up to date
   `CrashLoopBackOff` with empty logs.
 - Neither script pushes or edits `bundle/` by default, and `make hack-selftests`
   pins both guards without a cluster or a container runtime.
+- Reinstalling at the **same CSV version** needs the CatalogSource deleted and
+  re-applied, not just repointed: `spec.image` changes while
+  `status.connectionState.lastObservedState` still reads `READY` from the
+  previous catalog pod, so a "wait for READY" step passes against a catalog
+  that has not connected yet and OLM resolves the InstallPlan from the old
+  content. Gate on `status.registryService.createdAt` plus a `lastConnect`
+  later than the new pod's creation before recreating the Subscription
+  (observed 2026-10-31: the InstallPlan was created 5 s before the new catalog
+  pod's first successful connect and installed the previous digest under a
+  `Succeeded` CSV, #745).
 
 ## Contributor Workflow (Pre-PR)
 
