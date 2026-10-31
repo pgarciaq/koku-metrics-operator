@@ -51,6 +51,18 @@ make vendor             # update vendored dependencies
 make verify-manifests   # verify CRD/RBAC manifests are up to date
 ```
 
+## RBAC and generated files
+
+- `config/rbac/role.yaml` is generated. RBAC changes go through a
+  `+kubebuilder:rbac` marker on the controller; a hand edit survives until the
+  next `make manifests` erases it, and the bundle is regenerated from the erased
+  file — so nothing downstream complains.
+- `make verify-manifests` (runs `make manifests`, diffs `config/`) is the check
+  that fails a hand edit. `hack/verify-bundle-drift.sh` only warns, and is
+  advisory off release refs.
+- A push is not a CI run: `ci.yaml` triggers on push only for `downstream`/`main`.
+  Confirm with `gh run list --repo pgarciaq/koku-metrics-operator`.
+
 ## Contributor Workflow (Pre-PR)
 
 - Minimum local check before commit: `make fmt && make test`
