@@ -26,14 +26,6 @@ var nodeallocatablecpucores string = `
 	]
 ]
 `
-var nodecapacitycpucores string = `
-[
-	[
-		1604685600,
-		"8"
-	]
-]
-`
 var noderole string = `
 [
 	[
