@@ -242,23 +242,19 @@ func setup() error {
 			fileMode: 0777,
 		},
 	}
-	// setup the initial testing directory
-	if _, err := os.Stat(testingDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(testingDir, os.ModePerm); err != nil {
-			return fmt.Errorf("could not create %s directory: %v", testingDir, err)
-		}
-	}
+	// Setup the initial testing directory. Every report directory is created and
+	// seeded unconditionally: the controller recreates these paths empty whenever
+	// they are missing (dirconfig.GetDirectoryConfig, on every reconcile), so an
+	// existing directory says nothing about the fixture inside it (#750).
 	for _, directory := range dirInfoList {
 		reportPath := filepath.Join(testingDir, directory.dirName)
-		if _, err := os.Stat(reportPath); os.IsNotExist(err) {
-			if err := os.Mkdir(reportPath, directory.dirMode); err != nil {
-				return fmt.Errorf("could not create %s directory: %v", reportPath, err)
-			}
-			for _, reportFile := range directory.files {
-				_, err := Copy(directory.fileMode, filepath.Join("test_files/", reportFile), filepath.Join(reportPath, reportFile))
-				if err != nil {
-					return fmt.Errorf("could not copy %s file: %v", reportFile, err)
-				}
+		if err := os.MkdirAll(reportPath, directory.dirMode); err != nil {
+			return fmt.Errorf("could not create %s directory: %v", reportPath, err)
+		}
+		for _, reportFile := range directory.files {
+			_, err := Copy(directory.fileMode, filepath.Join("test_files/", reportFile), filepath.Join(reportPath, reportFile))
+			if err != nil {
+				return fmt.Errorf("could not copy %s file: %v", reportFile, err)
 			}
 		}
 	}
@@ -269,6 +265,48 @@ func shutdown() {
 	previousValidation = nil
 	os.RemoveAll(testingDir)
 
+}
+
+// TestSetupSeedsExistingReportDirectories pins #750: setup() has to place its
+// fixture in the report directories even when they already exist.
+//
+// The specs that rely on it create the directories empty in between: shutdown()
+// removes the whole mount path in AfterEach, and a reconcile that is still in
+// flight recreates "data", "staging" and "upload" empty through
+// dirconfig.GetDirectoryConfig. The old existence check read that as "the
+// fixture is already there" and skipped the copy, so the spec ran with nothing
+// to upload and timed out waiting for an upload that could never happen.
+func TestSetupSeedsExistingReportDirectories(t *testing.T) {
+	defer shutdown()
+
+	// The state a previous spec can hand over: directories present, fixture gone.
+	if err := os.RemoveAll(testingDir); err != nil {
+		t.Fatalf("could not clear %s: %v", testingDir, err)
+	}
+	for _, dir := range []string{"data", "staging", "upload"} {
+		if err := os.MkdirAll(filepath.Join(testingDir, dir), os.ModePerm); err != nil {
+			t.Fatalf("could not create %s: %v", dir, err)
+		}
+	}
+
+	if err := setup(); err != nil {
+		t.Fatalf("setup() returned an error: %v", err)
+	}
+
+	srcInfo, err := os.Stat(filepath.Join("test_files", "testFile.tar.gz"))
+	if err != nil {
+		t.Fatalf("could not stat the fixture source: %v", err)
+	}
+	for _, dir := range []string{"data", "upload"} {
+		dst := filepath.Join(testingDir, dir, "testFile.tar.gz")
+		info, err := os.Stat(dst)
+		if err != nil {
+			t.Fatalf("setup() left %s/ without testFile.tar.gz: the directory already existed, so the fixture copy was skipped (#750): %v", dir, err)
+		}
+		if info.Size() != srcInfo.Size() || info.Size() == 0 {
+			t.Fatalf("%s has size %d, want %d from test_files/testFile.tar.gz (#750)", dst, info.Size(), srcInfo.Size())
+		}
+	}
 }
 
 var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
