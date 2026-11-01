@@ -32,6 +32,13 @@ const (
 	workerRoleLabel       = "node-role.kubernetes.io/worker"
 
 	infrastructureSingletonName = "cluster"
+
+	// topologyCollectionTimeout bounds one topology collection pass (#729).
+	// Topology reads every cluster-scoped object uncached, so a slow or hung
+	// apiserver cannot wedge the reconcile; the deadline is per call, never on
+	// the reconcile context, which also carries the Prometheus queries and the
+	// upload. Four LISTs whose normal latency is well under a second.
+	topologyCollectionTimeout = 5 * time.Second
 )
 
 // hostedClusterListGVK identifies HostedCluster objects without vendoring the
@@ -175,10 +182,10 @@ const hcTierLabelKey = "insights.cost-management/hc-tier"
 // listHCPObserved lists HostedControlPlane objects (namespace, name, UID,
 // spec.clusterID). Missing APIs yield empty + nil (pre-HyperShift); any other
 // error propagates for the caller to degrade.
-func listHCPObserved(ctx context.Context, c client.Client) ([]hcpObserved, error) {
+func listHCPObserved(ctx context.Context, r client.Reader) ([]hcpObserved, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(hostedControlPlaneListGVK)
-	if err := c.List(ctx, list); err != nil {
+	if err := r.List(ctx, list); err != nil {
 		if isMissingAPIError(err) {
 			return nil, nil
 		}
@@ -200,10 +207,10 @@ func listHCPObserved(ctx context.Context, c client.Client) ([]hcpObserved, error
 
 // listHCObserved lists HostedCluster objects (namespace, name, UID,
 // spec.clusterID) with the same missing-API posture as listHCPObserved.
-func listHCObserved(ctx context.Context, c client.Client) ([]hcObserved, error) {
+func listHCObserved(ctx context.Context, r client.Reader) ([]hcObserved, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetGroupVersionKind(hostedClusterListGVK)
-	if err := c.List(ctx, list); err != nil {
+	if err := r.List(ctx, list); err != nil {
 		if isMissingAPIError(err) {
 			return nil, nil
 		}
@@ -228,21 +235,27 @@ func listHCObserved(ctx context.Context, c client.Client) ([]hcObserved, error) 
 // collectClusterTopology reads cluster topology facts with single LISTs (no
 // per-object GETs). It never fails: unreadable APIs degrade to empty facts
 // plus CollectionError so packaging is never blocked on topology.
-func collectClusterTopology(ctx context.Context, c client.Client) metricscfgv1beta1.ClusterTopologyStatus {
+//
+// It never fails, but it can only keep that promise if it *returns*: pass an
+// uncached reader (r.apiReader) and a context bounded by
+// topologyCollectionTimeout. Through the manager's cached client a denied or
+// unsynced informer blocks forever inside controller-runtime, before any error
+// exists to record (#729).
+func collectClusterTopology(ctx context.Context, r client.Reader) metricscfgv1beta1.ClusterTopologyStatus {
 	var collectionError string
 
 	infra := &configv1.Infrastructure{}
-	if err := c.Get(ctx, client.ObjectKey{Name: infrastructureSingletonName}, infra); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Name: infrastructureSingletonName}, infra); err != nil {
 		collectionError = fmt.Sprintf("infrastructures.config.openshift.io: %v", err)
 		infra = nil
 	}
 
 	nodeList := &corev1.NodeList{}
-	if err := c.List(ctx, nodeList); err != nil && collectionError == "" {
+	if err := r.List(ctx, nodeList); err != nil && collectionError == "" {
 		collectionError = fmt.Sprintf("nodes: %v", err)
 	}
 
-	hcObjs, err := listHCObserved(ctx, c)
+	hcObjs, err := listHCObserved(ctx, r)
 	if err != nil && collectionError == "" {
 		collectionError = fmt.Sprintf("hostedclusters.hypershift.openshift.io: %v", err)
 	}
@@ -250,7 +263,7 @@ func collectClusterTopology(ctx context.Context, c client.Client) metricscfgv1be
 	var hcpNamespaces []string
 	nsInfos := make(map[string]nsObserved)
 	nsList := &corev1.NamespaceList{}
-	if err := c.List(ctx, nsList, client.MatchingLabels{hcpNamespaceLabel: labelTrueValue}); err != nil {
+	if err := r.List(ctx, nsList, client.MatchingLabels{hcpNamespaceLabel: labelTrueValue}); err != nil {
 		if collectionError == "" {
 			collectionError = fmt.Sprintf("namespaces: %v", err)
 		}
@@ -270,7 +283,7 @@ func collectClusterTopology(ctx context.Context, c client.Client) metricscfgv1be
 	// labeled namespace to an incomplete entry naming the cause.
 	var snapshot []metricscfgv1beta1.HCPSnapshotEntry
 	if len(hcpNamespaces) > 0 {
-		hcpObjs, hcpErr := listHCPObserved(ctx, c)
+		hcpObjs, hcpErr := listHCPObserved(ctx, r)
 		if hcpErr != nil {
 			if isMissingAPIError(hcpErr) {
 				hcpObjs = nil
@@ -303,8 +316,21 @@ func collectClusterTopology(ctx context.Context, c client.Client) metricscfgv1be
 
 // setClusterTopology records observed cluster topology facts on the CR status
 // for HCP/fleet classification (W0, #406). Best-effort by design.
-func setClusterTopology(ctx context.Context, c client.Client, cr *metricscfgv1beta1.MetricsConfig) {
-	cr.Status.Topology = collectClusterTopology(ctx, c)
+//
+// It reads through the reconciler's uncached API reader, never the cached
+// client: a cluster-scoped informer whose list or watch is denied never syncs,
+// and the cached client then blocks inside controller-runtime before any error
+// exists for the CollectionError path to name (#729).
+//
+// The deadline is deliberately scoped to this call: the reconcile context also
+// carries the Prometheus queries and the upload, which must not be truncated by
+// a topology read. On expiry the reads error out, the usual CollectionError
+// path records which resource failed, and the reconcile continues.
+func (r *MetricsConfigReconciler) setClusterTopology(ctx context.Context, cr *metricscfgv1beta1.MetricsConfig) {
+	ctx, cancel := context.WithTimeout(ctx, topologyCollectionTimeout)
+	defer cancel()
+
+	cr.Status.Topology = collectClusterTopology(ctx, r.apiReader)
 	if cr.Status.Topology.CollectionError != "" {
 		log.WithName("setClusterTopology").Info("topology collection degraded", "error", cr.Status.Topology.CollectionError)
 	}

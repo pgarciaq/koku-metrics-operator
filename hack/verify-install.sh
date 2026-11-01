@@ -62,6 +62,8 @@
 #       --classify-log FILE
 #                          internal: classify the lines in FILE and exit
 #                          (used by hack/verify-install.selftest.sh, needs no cluster)
+#       --status-file FILE internal: render the status report from a captured
+#                          status JSON and exit (same selftest, needs no cluster)
 #   -v, --verbose          print every poll
 #   -h, --help
 #
@@ -84,6 +86,7 @@ WAIT=true
 VERBOSE=false
 CONTEXT=""
 CLASSIFY_LOG=""
+STATUS_FILE=""
 
 # Prints this file's header comment block. Bounded by the first statement rather
 # than by line numbers, so editing the header cannot silently truncate --help.
@@ -131,6 +134,10 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--classify-log)
 		CLASSIFY_LOG="$2"
+		shift 2
+		;;
+	--status-file)
+		STATUS_FILE="$2"
 		shift 2
 		;;
 	-v | --verbose)
@@ -195,6 +202,44 @@ classify_denials() {
 	BESTEFFORT_DENIAL_SAMPLE=$(printf '%s\n' "$BESTEFFORT_DENIALS" | head -3 || true)
 }
 
+report_status() {
+	local status="$1"
+	echo "$status" | jq -r '
+		"prometheus: configured=\(.prometheus.prometheus_configured // "-") connected=\(.prometheus.prometheus_connected // "-")",
+		"credentials_found: \(.authentication.credentials_found // "-")",
+		"source_defined: \(.source.source_defined // "-")",
+		"topology: controlPlaneTopology=\(.topology.controlPlaneTopology // "-") masterNodes=\(.topology.masterNodes // "-") workerNodes=\(.topology.workerNodes // "-") collectionError=\(.topology.collectionError // "-")",
+		"packaging: number_reports_stored=\(.packaging.number_reports_stored // "-")",
+		"upload: last_upload_status=\(.upload.last_upload_status // "-") last_successful_upload_time=\(.upload.last_successful_upload_time // "-")"' 2>/dev/null |
+		while IFS= read -r line; do info "$line"; done
+}
+
+# status.topology.collectionError is the operator's own account of a topology
+# read that failed (#729). The symptom alone ("topology is empty") names no
+# resource; this does, which is the difference between a 3-minute diagnosis and
+# the 2026-10-31 hunt through logs and RBAC.
+report_topology_degraded() {
+	local status="$1" cause
+	cause=$(echo "$status" | jq -r '.topology.collectionError // ""' 2>/dev/null || true)
+	[[ -n "$cause" ]] || return 0
+	echo
+	echo "note: topology collection degraded (status.topology.collectionError):"
+	echo "  $cause"
+	echo "  the facts above are incomplete or empty because those reads failed."
+	echo "  a denial here is an RBAC gap (hack/verify-bundle-drift.sh --check);"
+	echo "  a timeout is the operator's own collection bound - an unreachable apiserver."
+}
+
+# Test hook: render a captured status JSON without touching a cluster
+# (used by hack/verify-install.selftest.sh to pin the reporting above).
+if [[ -n "$STATUS_FILE" ]]; then
+	[[ -r "$STATUS_FILE" ]] || preflight_fail "cannot read $STATUS_FILE"
+	captured_status="$(cat "$STATUS_FILE")"
+	report_status "$captured_status"
+	report_topology_degraded "$captured_status"
+	exit 0
+fi
+
 # Test hook: classify a captured log file without touching a cluster.
 if [[ -n "$CLASSIFY_LOG" ]]; then
 	[[ -r "$CLASSIFY_LOG" ]] || preflight_fail "cannot read $CLASSIFY_LOG"
@@ -214,6 +259,13 @@ if ! "${OC[@]}" whoami >/dev/null 2>&1; then
 	preflight_fail "not logged in (oc whoami failed). Log in, or attach SSH/VPN to the cluster first."
 fi
 
+if [[ -n "$STATUS_FILE" ]]; then
+	[[ -r "$STATUS_FILE" ]] || preflight_fail "cannot read $STATUS_FILE"
+	captured_status="$(cat "$STATUS_FILE")"
+	report_status "$captured_status"
+	report_topology_degraded "$captured_status"
+	exit 0
+fi
 "${OC[@]}" get namespace "$NS" >/dev/null 2>&1 ||
 	preflight_fail "namespace $NS does not exist in $("${OC[@]}" config current-context 2>/dev/null)"
 
@@ -306,18 +358,6 @@ assert_true() {
 		| ($v == true) or (($v | type) == "string" and ($v | length) > 0)' >/dev/null 2>&1
 }
 
-report_status() {
-	local status="$1"
-	echo "$status" | jq -r '
-		"prometheus: configured=\(.prometheus.prometheus_configured // "-") connected=\(.prometheus.prometheus_connected // "-")",
-		"credentials_found: \(.authentication.credentials_found // "-")",
-		"source_defined: \(.source.source_defined // "-")",
-		"topology: controlPlaneTopology=\(.topology.controlPlaneTopology // "-") masterNodes=\(.topology.masterNodes // "-") workerNodes=\(.topology.workerNodes // "-")",
-		"packaging: number_reports_stored=\(.packaging.number_reports_stored // "-")",
-		"upload: last_upload_status=\(.upload.last_upload_status // "-") last_successful_upload_time=\(.upload.last_successful_upload_time // "-")"' 2>/dev/null |
-		while IFS= read -r line; do info "$line"; done
-}
-
 # Best-effort denials are tolerated, not hidden: they explain a column that is
 # empty in the CSVs, which is a data gap worth knowing about while you are
 # already looking at this install.
@@ -369,12 +409,14 @@ if [[ -z "$hard_failures" ]]; then
 		info "note: no successful upload recorded yet (data path unproven; re-run with --require-upload to gate on it)"
 	fi
 	report_besteffort
+	report_topology_degraded "$STATUS"
 	exit 0
 fi
 
 echo "FAIL: $hard_failures"
 echo
 report_status "$STATUS"
+report_topology_degraded "$STATUS"
 echo
 if [[ "$STALL_DENIAL_COUNT" -gt 0 ]]; then
 	echo "authorization failures in the reconcile path (last $SINCE):"

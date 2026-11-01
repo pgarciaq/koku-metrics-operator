@@ -72,6 +72,27 @@ make verify-manifests   # verify CRD/RBAC manifests are up to date
   any other branch is checked when a PR exists. Confirm with
   `gh run list --repo pgarciaq/koku-metrics-operator --event push`.
 
+## Cluster-scoped reads in the reconcile path
+
+- Read them through `r.apiReader` (`mgr.GetAPIReader()`), never `r.Client`. The
+  cached client resolves a type by starting an informer, then blocks in
+  `cache.WaitForCacheSync` while that informer cannot sync; a denied `list`
+  retries forever, so the read neither returns nor yields the error a best-effort
+  path could record. Current callers: `prometheus.go` (openshift-monitoring) and
+  `setClusterTopology` in `topology.go` (#729).
+- `MaxConcurrentReconciles` is unset (default 1), so one blocked read stalls
+  **every** MetricsConfig in the process while the pod stays `Running`, the CSV
+  stays `Succeeded`, and `.status` stops moving. `hack/verify-install.sh` is the
+  check that catches it, and it now prints `status.topology.collectionError`,
+  which names the resource the operator could not read.
+- Reproducing a denial needs a pod restart, not just an RBAC edit: an informer
+  that already synced keeps `HasSynced() == true`, so revoking a grant under a
+  running operator does not reproduce the block. Revoke, restart the pod, then
+  trigger a reconcile (verified 2026-11-01 on the SNO lab, #729).
+- Topology collection carries its own `topologyCollectionTimeout` (5s) per call.
+  Never put that deadline on the reconcile context: it also carries the
+  Prometheus queries and the upload.
+
 ## Branch bundle deploys
 
 - `hack/retarget-bundle.sh <image-ref>` writes the CSV's three image sites and

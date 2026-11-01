@@ -576,3 +576,122 @@ func TestCollectClusterTopology_HCPAPIAbsent(t *testing.T) {
 		t.Errorf("missing API is absence, not an error: %q", got.CollectionError)
 	}
 }
+
+// errCachedRead marks every read that reaches the cached client. The cached
+// client cannot produce it for a denied informer: it blocks inside
+// controller-runtime before any read returns (#729), so reaching this error at
+// all is the observable half of that defect.
+var errCachedRead = errors.New("topology read reached the cached client")
+
+// cachedClientStub is a client.Client whose every read fails, standing in for
+// the manager cache when the cluster-scoped informer cannot sync.
+func cachedClientStub(t *testing.T) client.Client {
+	t.Helper()
+	return fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
+		Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+			return errCachedRead
+		},
+		List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
+			return errCachedRead
+		},
+	}).Build()
+}
+
+// TestSetClusterTopology_UsesUncachedReader pins the wiring, not the collection
+// logic: the reconciler must hand topology the uncached API reader. Pre-fix the
+// reads reach Client, so every fact degrades to empty and CollectionError names
+// the cached read — which is exactly the shape the fake-client tests could not
+// distinguish from success (#729).
+func TestSetClusterTopology_UsesUncachedReader(t *testing.T) {
+	r := &MetricsConfigReconciler{
+		Client:    cachedClientStub(t),
+		apiReader: hcpCollectFixture(t, ""),
+	}
+	cr := &metricscfgv1beta1.MetricsConfig{}
+
+	r.setClusterTopology(context.Background(), cr)
+
+	got := cr.Status.Topology
+	if strings.Contains(got.CollectionError, errCachedRead.Error()) {
+		t.Fatalf("topology read through the cached client: %q", got.CollectionError)
+	}
+	if got.CollectionError != "" {
+		t.Errorf("uncached reader with a full fixture must not degrade, got %q", got.CollectionError)
+	}
+	if got.ControlPlaneTopology != "HighlyAvailable" {
+		t.Errorf("ControlPlaneTopology = %q, want HighlyAvailable from apiReader", got.ControlPlaneTopology)
+	}
+	if got.WorkerNodes != 1 {
+		t.Errorf("WorkerNodes = %d, want 1 from apiReader", got.WorkerNodes)
+	}
+	if got.HostedClusterCount != 1 {
+		t.Errorf("HostedClusterCount = %d, want 1 from apiReader", got.HostedClusterCount)
+	}
+	if len(got.HCPSnapshot) != 1 || !got.HCPSnapshot[0].Complete {
+		t.Errorf("HCPSnapshot = %+v, want one complete entry from apiReader", got.HCPSnapshot)
+	}
+}
+
+// neverSyncingReader answers only once its context is done, which is what the
+// cached client does when an informer's list/watch is denied and it never syncs.
+type neverSyncingReader struct {
+	// maxBlock keeps a pre-fix run finite: without a deadline the read returns
+	// here instead of hanging the test binary forever.
+	maxBlock time.Duration
+}
+
+func (n neverSyncingReader) Get(ctx context.Context, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+	return n.wait(ctx)
+}
+
+func (n neverSyncingReader) List(ctx context.Context, _ client.ObjectList, _ ...client.ListOption) error {
+	return n.wait(ctx)
+}
+
+func (n neverSyncingReader) wait(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(n.maxBlock):
+		return errors.New("neverSyncingReader: returned without a deadline")
+	}
+}
+
+// TestSetClusterTopology_BoundsBlockedRead proves the backstop: a reader that
+// never answers must still let the reconcile continue, within the collection
+// bound and with the failing resource named. Pre-fix there is no deadline, so
+// the call returns only at maxBlock and the test fails naming the missing bound.
+func TestSetClusterTopology_BoundsBlockedRead(t *testing.T) {
+	r := &MetricsConfigReconciler{
+		Client:    cachedClientStub(t),
+		apiReader: neverSyncingReader{maxBlock: topologyCollectionTimeout + 30*time.Second},
+	}
+	cr := &metricscfgv1beta1.MetricsConfig{}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.setClusterTopology(context.Background(), cr)
+	}()
+
+	// Slack covers scheduling noise; the assertion is "bounded", not "exactly
+	// 5s", so a slow CI box cannot turn a passing bound into a failure.
+	slack := 10 * time.Second
+	select {
+	case <-done:
+	case <-time.After(topologyCollectionTimeout + slack):
+		t.Fatalf("setClusterTopology still running after %s; the collection deadline (%s) is not applied",
+			topologyCollectionTimeout+slack, topologyCollectionTimeout)
+	}
+
+	got := cr.Status.Topology
+	if got.CollectionError == "" {
+		t.Fatal("blocked read must degrade to a CollectionError, got none")
+	}
+	if !strings.Contains(got.CollectionError, "infrastructures.config.openshift.io") {
+		t.Errorf("CollectionError %q must name the resource that failed first", got.CollectionError)
+	}
+	if got.ControlPlaneTopology != "" {
+		t.Errorf("blocked read must not yield facts, got %q", got.ControlPlaneTopology)
+	}
+}

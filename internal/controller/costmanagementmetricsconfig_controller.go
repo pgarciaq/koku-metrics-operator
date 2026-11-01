@@ -817,7 +817,10 @@ func (r *MetricsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// set the cluster topology facts for HCP/fleet classification (W0, #406);
 	// best-effort: collection degrades to empty facts, never fails reconcile.
-	setClusterTopology(ctx, r.Client, cr)
+	// Cluster-scoped reads go through the uncached API reader, because the
+	// cached client blocks on a denied informer instead of returning an error
+	// the degradation path could record (#729).
+	r.setClusterTopology(ctx, cr)
 
 	// set cluster id as default source name
 	if cr.Status.Source.SourceName == "" {

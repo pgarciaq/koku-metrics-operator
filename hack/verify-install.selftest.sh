@@ -22,7 +22,7 @@
 # Neither shows up in review, so the split is pinned here. Each case runs the
 # shipping script through --classify-log; nothing is re-implemented.
 #
-# Usage: hack/verify-install.selftest.sh   (no cluster, no oc, no jq needed)
+# Usage: hack/verify-install.selftest.sh   (no cluster, no oc; jq for --status-file)
 # Exit:  0 all cases pass, 1 a case regressed, 2 the script is missing.
 
 set -o errexit
@@ -116,5 +116,50 @@ run_case "collector denial repeated" "stall=0 besteffort=2" "$TMP/besteffort-twi
 } >"$TMP/stall-mentions-collector.log"
 run_case "reconcile denial whose message says 'collector'" "stall=1 besteffort=0" "$TMP/stall-mentions-collector.log"
 
+# 8. A degraded topology has to name its cause (#729). Without this the reader
+#    sees "controlPlaneTopology=-" and nothing else - the 2026-10-31 shape,
+#    where the operator's own reason for the failure appeared nowhere.
+cat >"$TMP/status-degraded.json" <<'JSON'
+{"topology":{"collectionError":"infrastructures.config.openshift.io: context deadline exceeded"}}
+JSON
+got=$("$VI" --status-file "$TMP/status-degraded.json" 2>&1) || {
+	echo "FAIL: degraded status: renderer exited non-zero" >&2
+	echo "  output: ${got}" >&2
+	exit 1
+}
+grep -qF 'collectionError=infrastructures.config.openshift.io: context deadline exceeded' <<<"$got" || {
+	echo "FAIL: degraded status: report does not carry the operator-reported cause" >&2
+	echo "  got: ${got}" >&2
+	exit 1
+}
+grep -qF 'topology collection degraded' <<<"$got" || {
+	echo "FAIL: degraded status: no note explaining the empty facts" >&2
+	echo "  got: ${got}" >&2
+	exit 1
+}
+echo "ok: degraded topology names its cause"
+
+# 9. The note must stay off a healthy install: a check that cries wolf on every
+#    good cluster gets ignored on the bad one.
+cat >"$TMP/status-healthy.json" <<'JSON'
+{"topology":{"controlPlaneTopology":"HighlyAvailable","masterNodes":3,"workerNodes":2}}
+JSON
+got=$("$VI" --status-file "$TMP/status-healthy.json" 2>&1) || {
+	echo "FAIL: healthy status: renderer exited non-zero" >&2
+	echo "  output: ${got}" >&2
+	exit 1
+}
+grep -qF 'controlPlaneTopology=HighlyAvailable' <<<"$got" || {
+	echo "FAIL: healthy status: topology facts missing from the report" >&2
+	echo "  got: ${got}" >&2
+	exit 1
+}
+if grep -qF 'topology collection degraded' <<<"$got"; then
+	echo "FAIL: healthy status: reported a degradation that the status does not contain" >&2
+	echo "  got: ${got}" >&2
+	exit 1
+fi
+echo "ok: healthy topology reports no degradation"
+
 echo
-echo "selftest PASS: denial classification (stall vs best-effort) behaves as documented."
+echo "selftest PASS: denial classification (stall vs best-effort) and topology degradation reporting behave as documented."
