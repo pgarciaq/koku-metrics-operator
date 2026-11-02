@@ -1298,8 +1298,22 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 			// cr.Spec.PrometheusConfig.CollectPreviousData != nil &&
 			// *cr.Spec.PrometheusConfig.CollectPreviousData &&
 			// cr.Status.Prometheus.LastQuerySuccessTime.IsZero()
-			thirtyDaysOld := time.Now().UTC().Truncate(time.Hour).Add(-30 * 24 * time.Hour)
-			expected := now().UTC().Add(-1 * fourteenDayDuration).Truncate(24 * time.Hour)
+			// Pin the clock inside the 00:00-00:59 UTC window, where the day boundary
+			// is observable. During that hour production intentionally floors the query
+			// start one day earlier than a naive "now - retention" would: the window
+			// grows by one empty day and no data is missed, so the value below is the
+			// intended behaviour, not an off-by-one to fix in getTimeRange.
+			// Derivation, mirroring getTimeRange:
+			//   start   = 2026-03-10T00:30Z truncated to the hour, minus 1h
+			//           = 2026-03-09T23:00Z (start of the previous full hour)
+			//   start   = 2026-03-09T23:00Z - 14d = 2026-02-23T23:00Z, floored to the day
+			//   result  = 2026-02-23T00:00:00Z
+			now = func() time.Time { return time.Date(2026, 3, 10, 0, 30, 0, 0, time.UTC) }
+			thirtyDaysOld := now().UTC().Truncate(time.Hour).Add(-30 * 24 * time.Hour)
+			// Literal, not recomputed from now(): recomputing would repeat
+			// production's expression without the hour truncation and go blind to
+			// its removal (the mutation would leave the expectation unchanged).
+			expected := time.Date(2026, 2, 23, 0, 0, 0, 0, time.UTC)
 
 			cr := &metricscfgv1beta1.MetricsConfig{
 				Spec: metricscfgv1beta1.MetricsConfigSpec{
@@ -1314,6 +1328,9 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 				},
 			}
 
+			// Equal pins the retention boundary at the day floor: dropping
+			// getTimeRange's ".Truncate(time.Hour).Add(-time.Hour)" yields
+			// 2026-02-24T00:00:00Z, one day later, and fails here.
 			got, _ := getTimeRange(ctx, r, cr)
 			Expect(got).To(Equal(expected))
 		})
