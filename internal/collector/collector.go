@@ -260,6 +260,12 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		}
 	}
 
+	// Tracks the last quarter's ROS outcome so the no-opted-in-namespace
+	// sentinel can be reported after the opt-in-independent deliverables
+	// below (#768). A later quarter that does collect clears an earlier
+	// sentinel, so it only survives when no quarter of the hour collected.
+	var rosOutcome error
+
 	// ######## generate resource-optimization reports and 15-minute VM metrics
 	if rosEnabled || vmEnabled {
 		quarterCollector := &PrometheusCollector{
@@ -272,17 +278,16 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		timeRange := c.TimeSeries
 		start := timeRange.Start.Add(1 * time.Second)
 		end := start.Add(14*time.Minute + 59*time.Second)
-		var err error
 		for i := 1; i <= vmQuarterHours; i++ {
 			timeRange.Start = start
 			timeRange.End = end
 			quarterCollector.TimeSeries = timeRange
 			if rosEnabled {
-				if err = generateResourceOptimizationReports(log, quarterCollector, dirCfg, nodeRows, yearMonth); err != nil {
-					if !errors.Is(err, ErrROSNoEnabledNamespaces) {
-						return err
-					}
+				err := generateResourceOptimizationReports(log, quarterCollector, dirCfg, nodeRows, yearMonth)
+				if err != nil && !errors.Is(err, ErrROSNoEnabledNamespaces) {
+					return err
 				}
+				rosOutcome = err
 			}
 			if vmEnabled {
 				if vmErr := collectVMQuarterHour(log, quarterCollector, dirCfg, yearMonth, vmAggregator); vmErr != nil {
@@ -291,10 +296,6 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 			}
 			start = start.Add(15 * time.Minute)
 			end = end.Add(15 * time.Minute)
-		}
-
-		if rosEnabled && errors.Is(err, ErrROSNoEnabledNamespaces) {
-			return ErrROSNoEnabledNamespaces
 		}
 	}
 
@@ -338,6 +339,13 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		if err := collectHCPCapacityHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
 			log.Info(fmt.Sprintf("HCP capacity collection skipped: %v", err))
 		}
+	}
+
+	// The no-opted-in-namespace outcome is reported last (#768): it means the
+	// ROS namespace/container family had nothing to collect, not that the
+	// cluster-level deliverables above should be skipped.
+	if rosEnabled && errors.Is(rosOutcome, ErrROSNoEnabledNamespaces) {
+		return ErrROSNoEnabledNamespaces
 	}
 
 	//################################################################################################################

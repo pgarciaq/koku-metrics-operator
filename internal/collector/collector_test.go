@@ -14,8 +14,10 @@ import (
 	"testing"
 	"time"
 
+	gologr "github.com/go-logr/logr"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/rest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -315,52 +317,177 @@ func TestGenerateReportsNoROS(t *testing.T) {
 }
 
 func TestGenerateReportsNoEnabledROS(t *testing.T) {
-	mapResults := make(mappedMockPromResult)
-	queryList := []*querys{nodeQueries, namespaceQueries, podQueries, volQueries, vmQueries, costNvidiaGpuMemoryCapacityMIGQueries, costNvidiaGpuMemoryCapacityNonMIGQueries, costNvidiaGpuUtilizationQueries, costNvidiaGpuMaxSlicesQueries}
-	for _, q := range queryList {
-		for _, query := range *q {
-			res := &model.Matrix{}
-			Load(filepath.Join("test_files", "test_data", query.Name), res, t)
-			mapResults[query.QueryString] = &mockPromResult{value: *res}
+	// #768: no namespace carries the opt-in label, so the ROS
+	// container/namespace family has nothing to collect. Every
+	// opt-in-independent deliverable must still run, and the sentinel must be
+	// reported last. The companion opt-in run changes only the namespace
+	// opt-in input, proving the container/namespace outputs are gated on it
+	// rather than missing because the fixture is broken.
+	type fixtureRun struct {
+		err           error
+		dirCfg        *dirconfig.DirectoryConfig
+		yearMonth     string
+		nodepoolCalls int
+	}
+
+	run := func(t *testing.T, optIn bool) fixtureRun {
+		t.Helper()
+
+		mapResults := make(mappedMockPromResult)
+		queryList := []*querys{nodeQueries, namespaceQueries, podQueries, volQueries, vmQueries, costNvidiaGpuMemoryCapacityMIGQueries, costNvidiaGpuMemoryCapacityNonMIGQueries, costNvidiaGpuUtilizationQueries, costNvidiaGpuMaxSlicesQueries}
+		for _, q := range queryList {
+			for _, query := range *q {
+				res := &model.Matrix{}
+				Load(filepath.Join("test_files", "test_data", query.Name), res, t)
+				mapResults[query.QueryString] = &mockPromResult{value: *res}
+			}
+		}
+		addNodeAllocCapMockResults(mapResults, t, true)
+
+		// The only input that differs between the no-opt-in and opt-in runs.
+		if optIn {
+			for _, query := range *rosContainerQueries {
+				res := &model.Vector{}
+				Load(filepath.Join("test_files", "test_data", query.Name), res, t)
+				mapResults[query.QueryString] = &mockPromResult{value: *res}
+			}
+			for _, query := range *rosNamespaceQueries {
+				res := &model.Vector{}
+				Load(filepath.Join("test_files", "test_data", query.Name), res, t)
+				mapResults[query.QueryString] = &mockPromResult{value: *res}
+			}
+			res := &model.Vector{}
+			Load(filepath.Join("test_files", "test_data", rosNamespaceFilter.Name), res, t)
+			mapResults[rosNamespaceFilter.QueryString] = &mockPromResult{value: *res}
+			addNamespaceQuotaMockResults(mapResults, t, true)
+		} else {
+			mapResults[rosNamespaceFilter.QueryString] = &mockPromResult{value: model.Vector{}}
+		}
+		addClusterQuotaMockResults(mapResults, t, false)
+
+		// Running-VM fixture: the cost VM CSV is gated on cost && vmEnabled,
+		// not on namespace opt-in.
+		origKubeVirt := kubeVirtCRDChecker
+		kubeVirtCRDChecker = func(*rest.Config) bool { return true }
+		t.Cleanup(func() { kubeVirtCRDChecker = origKubeVirt })
+		for query, result := range buildVMRosMockPromResults(t) {
+			mapResults[query] = result
+		}
+
+		addSLOMockResults(mapResults, true)
+		addAPITaxMockResults(mapResults, true)
+
+		// NodePool is K8s-API sourced: count invocations so a return before
+		// the hooks cannot pass silently.
+		nodepoolCalls := 0
+		origNodepool := collectNodepoolRowsForCollector
+		collectNodepoolRowsForCollector = func(_ *rest.Config, _ gologr.Logger, windowStart, windowEnd, collectedAt string) ([]nodepoolRow, int, error) {
+			nodepoolCalls++
+			return []nodepoolRow{{
+				HCClusterID:    "hc-768",
+				PoolName:       "pool-768",
+				WindowStart:    windowStart,
+				WindowEnd:      windowEnd,
+				SpecReplicas:   1,
+				StatusReplicas: 1,
+				CollectedAt:    collectedAt,
+				Source:         "hypershift",
+			}}, 0, nil
+		}
+		t.Cleanup(func() { collectNodepoolRowsForCollector = origNodepool })
+
+		// Capacity capture is current-window only (one-hour guard), so this
+		// fixture uses a now-based window instead of the 2020 golden window.
+		stubCapacityGathers(t, &hcpK8sFacts{
+			HCs:               []unstructured.Unstructured{capacityHCObj("hc-768", "ns", "HighlyAvailable", false, false, nil)},
+			HCPs:              []unstructured.Unstructured{capacityHCPObj("ns", true)},
+			Nodes:             []unstructured.Unstructured{capacityNodeObj("worker-768", map[string]interface{}{"node-role.kubernetes.io/worker": ""}, nil, "8", "32Gi", "500")},
+			OCPVersion:        "4.22.17",
+			InventoryComplete: true,
+		}, nil, hcpPromFacts{})
+
+		// Machine API is unrelated to this fixture; stub it so the run does
+		// not reach for a cluster.
+		origMachineSet := collectNodeMachineSetNames
+		collectNodeMachineSetNames = func(*rest.Config, gologr.Logger) map[string]string { return map[string]string{} }
+		t.Cleanup(func() { collectNodeMachineSetNames = origMachineSet })
+
+		hourEnd := time.Now().UTC().Truncate(time.Minute)
+		hourStart := hourEnd.Add(-time.Hour)
+		fakeCollector := &PrometheusCollector{
+			PromConn: mockPrometheusConnection{
+				mappedResults: &mapResults,
+				t:             t,
+			},
+			RestConfig: &rest.Config{},
+			TimeSeries: &promv1.Range{Start: hourStart, End: hourEnd, Step: time.Minute},
+		}
+
+		cr := fakeCR.DeepCopy()
+		// External topology so the SLO hook (External-gated) is exercised.
+		cr.Status.Topology.ControlPlaneTopology = "External"
+		cr.Status.ClusterID = sloTestHCID
+
+		dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: t.TempDir()}}
+		err := GenerateReports(cr, dirCfg, fakeCollector)
+		return fixtureRun{
+			err:           err,
+			dirCfg:        dirCfg,
+			yearMonth:     hourStart.Format("200601"),
+			nodepoolCalls: nodepoolCalls,
 		}
 	}
-	addNodeAllocCapMockResults(mapResults, t, true)
 
-	// add the namespace specific query
-	res := &model.Vector{}
-	mapResults[rosNamespaceFilter.QueryString] = &mockPromResult{value: *res}
-	addClusterQuotaMockResults(mapResults, t, false)
-	addNamespaceQuotaMockResults(mapResults, t, false)
-	addVMPodVMIMockResults(mapResults)
-	addVMGpuMockResults(mapResults)
+	t.Run("no opt-in keeps opt-in-independent deliverables", func(t *testing.T) {
+		r := run(t, false)
 
-	copyfakeTimeRange := fakeTimeRange
-	fakeCollector := &PrometheusCollector{
-		PromConn: mockPrometheusConnection{
-			mappedResults: &mapResults,
-			t:             t,
-		},
-		TimeSeries: &copyfakeTimeRange,
-	}
-	var err error
-	if err = GenerateReports(fakeCR, fakeDirCfg, fakeCollector); err == nil {
-		t.Errorf("Something failed: %v", err)
-	}
-	if !errors.Is(err, ErrROSNoEnabledNamespaces) {
-		t.Errorf("incorrect error returned: %v", err)
-	}
+		if !errors.Is(r.err, ErrROSNoEnabledNamespaces) {
+			t.Fatalf("GenerateReports error = %v, want ErrROSNoEnabledNamespaces", r.err)
+		}
 
-	// ####### everything below compares the generated reports to the expected reports #######
-	expectedMap := getFiles("expected_reports", t)
-	generatedMap := getFiles("test_reports", t)
-	expectedDiff := 5 // The expected diff is equal to the number of ROS reports we generate. If we add or remove reports, this number should change (apitax golden added one, nodepool golden added one more)
+		// Cost VM output must be written from the 15-minute samples.
+		costVM := filepath.Join(r.dirCfg.Reports.Path, vmFilePrefix+r.yearMonth+".csv")
+		body, err := os.ReadFile(costVM)
+		if err != nil {
+			t.Errorf("cost VM report must still be written without namespace opt-in (#768): %v", err)
+		} else if !strings.Contains(string(body), "test-vm") {
+			t.Errorf("cost VM report does not contain the running VM fixture row:\n%s", body)
+		}
 
-	if len(expectedMap)-len(generatedMap) != expectedDiff {
-		t.Errorf("incorrect number of reports generated")
-	}
-	if err := fakeDirCfg.Reports.RemoveContents(); err != nil {
-		t.Fatal("failed to cleanup reports directory")
-	}
+		for _, prefix := range []string{rosSLOFilePrefix, rosAPITaxFilePrefix, rosNodepoolFilePrefix, rosHCPCapacityFilePrefix} {
+			path := filepath.Join(r.dirCfg.Reports.Path, prefix+r.yearMonth+".csv")
+			if _, err := os.Stat(path); err != nil {
+				t.Errorf("%s report must still be written without namespace opt-in (#768): %v", prefix, err)
+			}
+		}
+		if r.nodepoolCalls != 1 {
+			t.Errorf("NodePool hook ran %d times, want exactly 1 without namespace opt-in (#768)", r.nodepoolCalls)
+		}
+
+		for _, prefix := range []string{rosContainerFilePrefix, rosNamespaceFilePrefix} {
+			path := filepath.Join(r.dirCfg.Reports.Path, prefix+r.yearMonth+".csv")
+			if _, err := os.Stat(path); err == nil {
+				t.Errorf("%s report must not be written when no namespace is opted in", prefix)
+			}
+		}
+	})
+
+	t.Run("opt-in produces container and namespace reports", func(t *testing.T) {
+		r := run(t, true)
+
+		if r.err != nil {
+			t.Fatalf("GenerateReports with an opted-in namespace: %v", r.err)
+		}
+		for _, prefix := range []string{rosContainerFilePrefix, rosNamespaceFilePrefix} {
+			path := filepath.Join(r.dirCfg.Reports.Path, prefix+r.yearMonth+".csv")
+			if _, err := os.Stat(path); err != nil {
+				t.Errorf("%s report must be written when a namespace is opted in: %v", prefix, err)
+			}
+		}
+		if r.nodepoolCalls != 1 {
+			t.Errorf("NodePool hook ran %d times in the opt-in run, want exactly 1", r.nodepoolCalls)
+		}
+	})
 }
 
 func TestGenerateReportsNoCost(t *testing.T) {

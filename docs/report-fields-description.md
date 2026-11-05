@@ -15,6 +15,8 @@ This document provides an outline of the fields included in the collected usage 
         ```
         plus the equivalent `hypershift.openshift.io/hosted-control-plane` arm. VM collection queries are cluster-wide by design and carry no namespace filter.
 
+    * When no namespace carries the opt-in label, only container and namespace metrics are omitted. The operator still collects the cluster-level, opt-in-independent reports for that hour: the cluster quota report, the cost-management VM report (when VM and cost collection are both enabled), SLO rollups (when External collection is enabled), API tax rollups, NodePool inventory, and HCP fleet-capacity snapshots. The operator reports this state as a successful hour with a message saying container and namespace metrics were not collected, rather than as a failure to retry.
+
 
 ### Common Fields
 
