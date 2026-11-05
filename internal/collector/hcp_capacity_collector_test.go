@@ -750,7 +750,8 @@ func TestCollectHCPCapacityHourly_StalledPromReturnsWithinBudget(t *testing.T) {
 			return
 		}
 		select {
-		case <-done: // the error was already handled by the main select
+		case err := <-done: // already handled by the main select
+			_ = err
 		case <-time.After(5 * time.Second):
 			t.Error("the hook goroutine did not exit after release")
 		}
