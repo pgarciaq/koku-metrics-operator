@@ -6,14 +6,18 @@
 package collector
 
 import (
-	"strings"
-
 	"github.com/mitchellh/mapstructure"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 )
 
 // mergeRosNamespaceCSVRows combines namespace usage metrics (keyed by namespace) with
 // per-ResourceQuota hard/used metrics (keyed by namespace,resourcequota).
+//
+// Row identity comes from each quota row's own namespace/quota_name values, never
+// from the map key: the keys are opaque identities, and splitting them would tie
+// this function to the encoder's component order. Composite and raw namespace keys
+// share the output map; they cannot collide because a namespace name is a DNS-1123
+// label and never contains ':'.
 func mergeRosNamespaceCSVRows(usageResults, quotaResults mappedResults, ts *promv1.Range) mappedCSVStruct {
 	usageRows := make(mappedCSVStruct)
 	for ns, val := range usageResults {
@@ -30,18 +34,21 @@ func mergeRosNamespaceCSVRows(usageResults, quotaResults mappedResults, ts *prom
 	out := make(mappedCSVStruct)
 	namespacesWithQuota := make(map[string]struct{})
 
-	for quotaKey, val := range quotaResults {
-		parts := strings.SplitN(quotaKey, ",", 2)
-		if len(parts) != 2 {
+	for _, val := range quotaResults {
+		ns := stringValue(val, "namespace")
+		quotaName := stringValue(val, "quota_name")
+		if ns == "" || quotaName == "" {
 			continue
 		}
-		ns, quotaName := parts[0], parts[1]
 		namespacesWithQuota[ns] = struct{}{}
 
 		row := newROSNamespaceRow(ts)
 		if base, ok := usageRows[ns]; ok {
-			if baseRow, ok := base.(rosNamespaceRow); ok {
-				row = baseRow
+			// getStruct stores rows through a pointer, so the assertion must be
+			// *rosNamespaceRow; asserting the value type silently discarded the
+			// namespace usage fields of every quota row.
+			if baseRow, ok := base.(*rosNamespaceRow); ok {
+				row = *baseRow
 			}
 		}
 		row.Namespace = ns
@@ -49,7 +56,7 @@ func mergeRosNamespaceCSVRows(usageResults, quotaResults mappedResults, ts *prom
 		if err := mapstructure.Decode(val, &row); err != nil {
 			continue
 		}
-		out[quotaKey] = row
+		out[keyFromValues(ns, quotaName)] = &row
 	}
 
 	for ns, row := range usageRows {
