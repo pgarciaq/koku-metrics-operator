@@ -520,9 +520,8 @@ func isHCPCapacityAPIAvailable(config *rest.Config) bool {
 // gatherHCPCapacityProm queries the per-HCP QPS rates and the five MCE
 // gauges at the window-end instant. Every instant query is evaluated at
 // ts — one consistent observation timestamp.
-var gatherHCPCapacityProm = func(q hcpCapacityQuerier, ts time.Time, readyNamespaces []string) hcpPromFacts {
+var gatherHCPCapacityProm = func(ctx context.Context, q hcpCapacityQuerier, ts time.Time, readyNamespaces []string) hcpPromFacts {
 	facts := hcpPromFacts{}
-	ctx := context.Background()
 
 	results := make([]hcpQPSQueryResult, 0, len(readyNamespaces))
 	for _, ns := range readyNamespaces {
@@ -660,7 +659,15 @@ func collectHCPCapacityHourly(log gologr.Logger, cr *metricscfgv1beta1.MetricsCo
 	}
 	var prom hcpPromFacts
 	if c.PromConn != nil {
-		prom = gatherHCPCapacityProm(c.PromConn, hourEnd, readyHCPNamespaces(facts.HCPs))
+		// #767 (V15-17): the evidence gather honors the configured query
+		// budget — the same discipline as every other query group
+		// (node_alloc_cap_queries, prometheus.go). A stalled response
+		// degrades the capacity facts (QPS unknown, MCE references absent)
+		// instead of wedging the synchronous hook — and with it packaging,
+		// status updates and requeue (default reconcile concurrency is 1).
+		ctx, cancel := context.WithTimeout(context.Background(), c.ContextTimeout)
+		defer cancel()
+		prom = gatherHCPCapacityProm(ctx, c.PromConn, hourEnd, readyHCPNamespaces(facts.HCPs))
 	}
 	uploadCycle := hcpCapacityDefaultUploadCycleMinutes
 	operatorVersion := ""

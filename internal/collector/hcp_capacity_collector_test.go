@@ -8,11 +8,16 @@ package collector
 import (
 	"context"
 	"encoding/csv"
+	"fmt"
 	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -523,7 +528,7 @@ func stubCapacityGathers(t *testing.T, facts *hcpK8sFacts, k8sErr error, prom hc
 	t.Helper()
 	origK8s, origProm := gatherHCPCapacityK8s, gatherHCPCapacityProm
 	gatherHCPCapacityK8s = func(*rest.Config) (*hcpK8sFacts, error) { return facts, k8sErr }
-	gatherHCPCapacityProm = func(hcpCapacityQuerier, time.Time, []string) hcpPromFacts { return prom }
+	gatherHCPCapacityProm = func(context.Context, hcpCapacityQuerier, time.Time, []string) hcpPromFacts { return prom }
 	t.Cleanup(func() { gatherHCPCapacityK8s, gatherHCPCapacityProm = origK8s, origProm })
 }
 
@@ -636,7 +641,7 @@ func TestGatherHCPCapacityProm_QPS(t *testing.T) {
 		q1: {capacitySample(10, ts)},
 		q2: {capacitySample(30, ts)},
 	}}
-	f := gatherHCPCapacityProm(both, ts, []string{"ns-a", "ns-b"})
+	f := gatherHCPCapacityProm(context.Background(), both, ts, []string{"ns-a", "ns-b"})
 	if !f.ReadyHCPQPSKnown || f.AverageReadyHCPQPS != 20 {
 		t.Fatalf("mean = %v known = %v, want 20 true", f.AverageReadyHCPQPS, f.ReadyHCPQPSKnown)
 	}
@@ -645,13 +650,13 @@ func TestGatherHCPCapacityProm_QPS(t *testing.T) {
 		q1: {capacitySample(10, ts)},
 		// q2 absent → empty vector
 	}}
-	f = gatherHCPCapacityProm(empty, ts, []string{"ns-a", "ns-b"})
+	f = gatherHCPCapacityProm(context.Background(), empty, ts, []string{"ns-a", "ns-b"})
 	if f.ReadyHCPQPSKnown {
 		t.Fatal("empty per-HCP query must make the average unknown")
 	}
 
 	errd := fakeCapacityQuerier{errs: map[string]error{q2: io.EOF}}
-	f = gatherHCPCapacityProm(errd, ts, []string{"ns-a", "ns-b"})
+	f = gatherHCPCapacityProm(context.Background(), errd, ts, []string{"ns-a", "ns-b"})
 	if f.ReadyHCPQPSKnown {
 		t.Fatal("failed per-HCP query must make the average unknown")
 	}
@@ -669,7 +674,7 @@ func TestGatherHCPCapacityProm_MCEGauges(t *testing.T) {
 		low: {capacitySample(8, ts)},
 		dup: {capacitySample(2, ts), capacitySample(3, ts)},
 	}}
-	f := gatherHCPCapacityProm(querier, ts, nil)
+	f := gatherHCPCapacityProm(context.Background(), querier, ts, nil)
 	if f.MCERequestMaxHCs == nil || *f.MCERequestMaxHCs != 8 {
 		t.Error("single-series request gauge must pass through")
 	}
@@ -687,3 +692,180 @@ func TestGatherHCPCapacityProm_MCEGauges(t *testing.T) {
 var _ hcpCapacityQuerier = fakeCapacityQuerier{}
 var _ csvStruct = hcpCapacityRow{}
 var _ = metav1.Now // keep the import if fixtures evolve
+
+// #767 (V15-17): the optional HCP-capacity Prometheus evidence must honor
+// the configured ContextTimeout. The baseline ran every per-HCP QPS and
+// MCE-gauge query under context.Background() with no client timeout — a
+// response stall wedged the synchronous hook (and with it packaging, status
+// updates and requeue; default reconcile concurrency is 1) while Ping
+// health probes stayed green. This is the criterion's test: the REAL client
+// construction and the hook together, against a server that accepts and
+// withholds.
+func TestCollectHCPCapacityHourly_StalledPromReturnsWithinBudget(t *testing.T) {
+	release := make(chan struct{})
+	var contacted atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contacted.Add(1)
+		<-release
+	}))
+	defer srv.Close()
+
+	c := &PrometheusCollector{
+		RestConfig:     &rest.Config{},
+		PromCfg:        &PrometheusConfig{Address: srv.URL},
+		ContextTimeout: 500 * time.Millisecond,
+	}
+	if err := SetPrometheusConnection(c); err != nil {
+		t.Fatalf("real client construction: %v", err)
+	}
+	if c.PromConn == nil {
+		t.Fatal("SetPrometheusConnection must set PromConn")
+	}
+
+	// Stub ONLY the Kubernetes inventory — the Prometheus path runs real.
+	origK8s := gatherHCPCapacityK8s
+	gatherHCPCapacityK8s = func(*rest.Config) (*hcpK8sFacts, error) {
+		return &hcpK8sFacts{
+			HCPs:              []unstructured.Unstructured{capacityHCPObj("ns", true)},
+			InventoryComplete: true,
+		}, nil
+	}
+	t.Cleanup(func() { gatherHCPCapacityK8s = origK8s })
+
+	dirCfg := capacityTempDirCfg(t)
+	hourEnd := time.Now().UTC().Truncate(time.Minute)
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		done <- collectHCPCapacityHourly(gologr.Discard(), capacityTestCR(), c, dirCfg, "202610", hourEnd.Add(-time.Hour), hourEnd)
+	}()
+
+	// Join the hook goroutine on every exit path so it never writes into a
+	// directory the test is tearing down.
+	returned := false
+	defer func() {
+		close(release)
+		if returned {
+			return
+		}
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("the hook goroutine did not exit after release")
+		}
+	}()
+
+	select {
+	case err := <-done:
+		returned = true
+		elapsed := time.Since(start)
+		if elapsed > 2*time.Second {
+			t.Errorf("the hook took %v — the stalled response held it beyond the configured budget (#767)", elapsed)
+		}
+		if err != nil {
+			t.Errorf("stalled evidence must degrade the facts, not fail the hook: %v", err)
+		}
+		// The Prom path was genuinely exercised (a fix that skips the gather
+		// entirely must fail here, not pass on timing alone).
+		if contacted.Load() < 1 {
+			t.Error("the stalled server was never contacted — the Prom evidence path did not run (#767 review finding)")
+		}
+		// The degraded row: K8s facts emitted, QPS unknown.
+		rows := readCapacityCSV(t, dirCfg, "202610")
+		if len(rows) != 2 {
+			t.Fatalf("degraded facts must still emit a row: want header + 1 row, got %d", len(rows))
+		}
+		for i, h := range rows[0] {
+			if h == "ready_hcp_qps_known" && rows[1][i] != "false" {
+				t.Errorf("stalled Prom evidence must leave ready_hcp_qps_known=false, got %q (#767)", rows[1][i])
+			}
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("the capacity hook did not return — wedged past the configured ContextTimeout (#767)")
+	}
+}
+
+// Fan-out control: five ready namespaces against the stalling server — the
+// shared budget bounds the WHOLE gather, not each query (the first query
+// eats the pool; the rest fail fast with Failed flags → degraded facts).
+func TestGatherHCPCapacityProm_FanOutSharesOneBudget(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	c := &PrometheusCollector{
+		RestConfig:     &rest.Config{},
+		PromCfg:        &PrometheusConfig{Address: srv.URL},
+		ContextTimeout: 500 * time.Millisecond,
+	}
+	if err := SetPrometheusConnection(c); err != nil {
+		t.Fatalf("real client construction: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.ContextTimeout)
+	defer cancel()
+
+	namespaces := []string{"ns-a", "ns-b", "ns-c", "ns-d", "ns-e"}
+	done := make(chan hcpPromFacts, 1)
+	start := time.Now()
+	go func() { done <- gatherHCPCapacityProm(ctx, c.PromConn, time.Now().UTC(), namespaces) }()
+
+	select {
+	case f := <-done:
+		elapsed := time.Since(start)
+		if elapsed > 2*time.Second {
+			t.Errorf("the gather took %v for %d namespaces — the budget must bound the whole gather, not multiply (#767)", elapsed, len(namespaces))
+		}
+		if f.ReadyHCPQPSKnown {
+			t.Error("stalled queries must leave the QPS facts unknown")
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("the gather did not return — unbounded (#767)")
+	}
+}
+
+// Control: a responsive server — the bounded context must not change
+// ordinary query behavior; the facts come back complete through the REAL
+// client construction.
+func TestGatherHCPCapacityProm_ResponsiveServerFactsComplete(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The prometheus v1 API client sends POST with a form-encoded body.
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parse form: %v", err)
+		}
+		query := r.Form.Get("query")
+		value := "10"
+		if strings.Contains(query, "request_based") {
+			value = "8"
+		}
+		fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[%d,"%s"]}]}}`, time.Now().Unix(), value)
+	}))
+	defer srv.Close()
+
+	c := &PrometheusCollector{
+		RestConfig:     &rest.Config{},
+		PromCfg:        &PrometheusConfig{Address: srv.URL},
+		ContextTimeout: 5 * time.Second,
+	}
+	if err := SetPrometheusConnection(c); err != nil {
+		t.Fatalf("real client construction: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.ContextTimeout)
+	defer cancel()
+	f := gatherHCPCapacityProm(ctx, c.PromConn, time.Now().UTC(), []string{"ns-a"})
+	if !f.ReadyHCPQPSKnown || f.AverageReadyHCPQPS != 10 {
+		t.Errorf("responsive server: QPS = %v known = %v, want 10 true (ordinary behavior retained, #767)", f.AverageReadyHCPQPS, f.ReadyHCPQPSKnown)
+	}
+	if f.MCERequestMaxHCs == nil || *f.MCERequestMaxHCs != 8 {
+		got := int64(-1)
+		if f.MCERequestMaxHCs != nil {
+			got = *f.MCERequestMaxHCs
+		}
+		t.Errorf("responsive server: MCE request gauge = %d, want 8", got)
+	}
+}
