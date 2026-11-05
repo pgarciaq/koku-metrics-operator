@@ -842,7 +842,9 @@ func TestGatherHCPCapacityProm_ResponsiveServerFactsComplete(t *testing.T) {
 		if strings.Contains(query, "request_based") {
 			value = "8"
 		}
-		fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[%d,"%s"]}]}}`, time.Now().Unix(), value)
+		if _, err := fmt.Fprintf(w, `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[%d,"%s"]}]}}`, time.Now().Unix(), value); err != nil {
+			t.Errorf("write prom response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
