@@ -261,17 +261,30 @@ func (p *FilePackager) writeTarball(tarFileName, manifestFileName string, archiv
 	tarFilePath := filepath.Join(p.DirCfg.Upload.Path, tarFileName)
 	log.Info("generating tar.gz", "tarFile", tarFilePath)
 
-	// create the tarfile
-	tarFile, err := os.Create(tarFilePath)
+	// #766: write to a temp name and rename on completion — a failed or
+	// interrupted archive attempt must never leave a partial file under the
+	// final name in the upload directory. The temp name deliberately avoids
+	// the "tar.gz" substring: the uploader selects upload candidates by
+	// substring match, so an interrupted attempt's temp file must never be
+	// uploadable.
+	tmpFilePath := strings.TrimSuffix(tarFilePath, ".tar.gz") + ".tar.tmp"
+	tarFile, err := os.Create(tmpFilePath)
 	if err != nil {
 		return fmt.Errorf("writeTarball: error creating tar file: %v", err)
 	}
-	defer tarFile.Close()
+	// Close on every exit path — error returns below must not leak the
+	// descriptor (double-close on the success path is a harmless no-op
+	// error).
+	defer func() { _ = tarFile.Close() }()
+	tmpOK := false
+	defer func() {
+		if !tmpOK {
+			_ = os.Remove(tmpFilePath)
+		}
+	}()
 
 	gzipWriter := gzip.NewWriter(tarFile)
-	defer gzipWriter.Close()
 	tw := tar.NewWriter(gzipWriter)
-	defer tw.Close()
 
 	// add the files to the tarFile
 	for idx, filePath := range archiveFiles {
@@ -291,7 +304,82 @@ func (p *FilePackager) writeTarball(tarFileName, manifestFileName string, archiv
 		return fmt.Errorf("writeTarball: failed to create tar file: %v", err)
 	}
 
-	return tarFile.Sync()
+	// Close the writers in order (tar → gzip → file) before the rename so
+	// the flushed bytes hit disk, then finalize atomically (#766).
+	if err := tw.Close(); err != nil {
+		return fmt.Errorf("writeTarball: closing tar writer: %v", err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		return fmt.Errorf("writeTarball: closing gzip writer: %v", err)
+	}
+	if err := tarFile.Sync(); err != nil {
+		return fmt.Errorf("writeTarball: syncing tar file: %v", err)
+	}
+	if err := tarFile.Close(); err != nil {
+		return fmt.Errorf("writeTarball: closing tar file: %v", err)
+	}
+	if err := os.Rename(tmpFilePath, tarFilePath); err != nil {
+		return fmt.Errorf("writeTarball: finalizing tar file: %v", err)
+	}
+	tmpOK = true
+	return nil
+}
+
+// stagedBaseName strips the "<uuid>-" prefix the packager adds when moving
+// files to staging, recovering the original report name.
+func stagedBaseName(stagedName string) string {
+	// uuid v4 with dashes is 36 chars; staged names are "<uuid>-<original>".
+	if len(stagedName) > 37 {
+		return stagedName[37:]
+	}
+	return stagedName
+}
+
+// isSplitPartOf reports whether stagedBase is a split part of the source
+// report base (writePart names parts "<base><n>.csv", n >= 1).
+func isSplitPartOf(stagedBase, sourceBase string) bool {
+	if !strings.HasSuffix(sourceBase, ".csv") || !strings.HasSuffix(stagedBase, ".csv") {
+		return false
+	}
+	prefix := strings.TrimSuffix(sourceBase, ".csv")
+	rest := strings.TrimSuffix(stagedBase, ".csv")
+	if !strings.HasPrefix(rest, prefix) {
+		return false
+	}
+	num := rest[len(prefix):]
+	if num == "" {
+		return false
+	}
+	for _, r := range num {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// supersedeStagedArtifacts deletes staged entries derived from the source
+// report (#766 review findings): a prior pass may have left an old-uid copy
+// (complete or truncated — copy mode can be interrupted mid-write) or split
+// parts under the OLD uid. When the source is (re-)staged fresh, those
+// artifacts are stale: the fresh move supersedes them, and keeping them
+// would duplicate the report in the archive (or package a truncated copy).
+func (p *FilePackager) supersedeStagedArtifacts(sourceName string) error {
+	stagedList, err := os.ReadDir(p.DirCfg.Staging.Path)
+	if err != nil {
+		return fmt.Errorf("supersedeStagedArtifacts: could not read staging directory: %v", err)
+	}
+	for _, entry := range stagedList {
+		base := stagedBaseName(entry.Name())
+		if base == sourceName || isSplitPartOf(base, sourceName) {
+			if err := os.Remove(filepath.Join(p.DirCfg.Staging.Path, entry.Name())); err != nil {
+				return fmt.Errorf("supersedeStagedArtifacts: could not remove superseded %s: %v", entry.Name(), err)
+			}
+			log.WithName("supersedeStagedArtifacts").Info("removed superseded staged artifact",
+				"staged", entry.Name(), "source", sourceName)
+		}
+	}
+	return nil
 }
 
 // writePart writes a portion of a split file into a new file
@@ -454,27 +542,21 @@ func (p *FilePackager) needSplit(fileList []os.FileInfo) bool {
 	return false
 }
 
-// moveOrCopyFiles moves files from reportsDirectory to stagingDirectory
+// moveOrCopyFiles moves files from reportsDirectory to stagingDirectory.
+// #766 (V15-16): staging is NOT cleared at entry — a prior failed pass may
+// have stranded already-moved reports there (their only copy), and the
+// retry must include them as pending input. Sources stage FIRST (each
+// fresh staging superseding the same report's old-uid artifacts: truncated
+// or complete prior copies, and parts from an interrupted split); the
+// recovery read of staging happens AFTER the moves so superseded artifacts
+// are never collected. Staging is removed only after successful finalized
+// packaging (see PackageReports).
 func (p *FilePackager) moveOrCopyFiles(cr *metricscfgv1beta1.MetricsConfig) ([]os.FileInfo, error) {
 	log := log.WithName("moveOrCopyFiles")
-	var files []os.FileInfo
 
-	// move all files
 	fileList, err := os.ReadDir(p.DirCfg.Reports.Path)
 	if err != nil {
 		return nil, fmt.Errorf("moveOrCopyFiles: could not read reports directory: %v", err)
-	}
-	if len(fileList) <= 0 {
-		return nil, ErrNoReports
-	}
-
-	// remove all files from staging directory
-	if cr.Status.Packaging.PackagingError == "" {
-		// Only clear the staging directory if previous packaging was successful
-		log.Info("clearing out staging directory")
-		if err := p.DirCfg.Staging.RemoveContents(); err != nil {
-			return nil, fmt.Errorf("moveOrCopyFiles: could not clear staging: %v", err)
-		}
 	}
 
 	log.Info("moving or copying report files to staging directory")
@@ -488,15 +570,84 @@ func (p *FilePackager) moveOrCopyFiles(cr *metricscfgv1beta1.MetricsConfig) ([]o
 		from := filepath.Join(p.DirCfg.Reports.Path, file.Name())
 		to := filepath.Join(p.DirCfg.Staging.Path, p.uid+"-"+file.Name())
 
+		// #766 review finding: the fresh staging of a source supersedes any
+		// old-uid artifacts of the SAME report (a truncated or complete
+		// prior copy, or parts from an interrupted split) — keeping them
+		// would duplicate the report or package a partial copy.
+		if err := p.supersedeStagedArtifacts(file.Name()); err != nil {
+			return nil, fmt.Errorf("moveOrCopyFiles: %v", err)
+		}
 		if err := p.FilesAction(from, to); err != nil {
 			return nil, fmt.Errorf("moveOrCopyFiles: failed to copy/move files: %v", err)
 		}
+	}
 
-		newFile, err := os.Stat(to)
-		if err != nil {
-			return nil, fmt.Errorf("moveOrCopyFiles: failed to get new file stats: %v", err)
+	// Recovery read AFTER the moves: staging now holds the fresh moves plus
+	// reports stranded by prior failed passes (their sources are gone) —
+	// and nothing that a fresh move just superseded.
+	stagedList, err := os.ReadDir(p.DirCfg.Staging.Path)
+	if err != nil {
+		return nil, fmt.Errorf("moveOrCopyFiles: could not read staging directory: %v", err)
+	}
+	var files []os.FileInfo
+	for _, file := range stagedList {
+		if filepath.Base(file.Name()) == "manifest.json" {
+			continue
 		}
-		files = append(files, newFile)
+		isCSV := strings.HasSuffix(file.Name(), ".csv")
+		isClusterInstanceTypesJSON := strings.Contains(file.Name(), "cluster_instance_types") && strings.HasSuffix(file.Name(), ".json")
+		if !isCSV && !isClusterInstanceTypesJSON {
+			continue
+		}
+		info, err := file.Info()
+		if err != nil {
+			return nil, fmt.Errorf("moveOrCopyFiles: could not stat staged file %s: %v", file.Name(), err)
+		}
+		files = append(files, info)
+	}
+
+	// An original supersedes its own split parts (#766 review finding): if
+	// both the original report and parts from an interrupted split are
+	// staged, the parts are stale artifacts — this pass decides afresh
+	// whether to split (a re-split overwrites the same deterministic part
+	// names), and packaging both would duplicate the report. Parts share
+	// their original's staged uid prefix, which is what distinguishes a
+	// part of X from an independently-collected report literally named
+	// like a part.
+	uidOf := func(name string) string {
+		if len(name) >= 37 {
+			return name[:36]
+		}
+		return ""
+	}
+	var recovered []os.FileInfo
+	for _, f := range files {
+		fb, fu := stagedBaseName(f.Name()), uidOf(f.Name())
+		superseded := false
+		for _, o := range files {
+			if o.Name() == f.Name() || uidOf(o.Name()) != fu {
+				continue
+			}
+			if isSplitPartOf(fb, stagedBaseName(o.Name())) {
+				superseded = true
+				break
+			}
+		}
+		if !superseded {
+			recovered = append(recovered, f)
+		} else {
+			if err := os.Remove(filepath.Join(p.DirCfg.Staging.Path, f.Name())); err != nil {
+				return nil, fmt.Errorf("moveOrCopyFiles: could not remove superseded split part %s: %v", f.Name(), err)
+			}
+		}
+	}
+	files = recovered
+
+	if len(fileList) <= 0 && len(files) <= 0 {
+		return nil, ErrNoReports
+	}
+	if stranded := len(files); stranded > 0 {
+		log.Info("packaging staged reports", "fresh-and-recovered", stranded)
 	}
 	return files, nil
 }
@@ -613,6 +764,11 @@ func (p *FilePackager) PackageReports(cr *metricscfgv1beta1.MetricsConfig) error
 	}
 
 	log.Info("file packaging was successful")
+	// #766: staging is removed only after successful finalized packaging —
+	// every report now exists inside the finalized archive(s) in upload.
+	if err := p.DirCfg.Staging.RemoveContents(); err != nil {
+		return fmt.Errorf("PackageReports: could not clear staging after successful packaging: %v", err)
+	}
 	cr.Status.Packaging.LastSuccessfulPackagingTime = metav1.Now()
 	return nil
 }
