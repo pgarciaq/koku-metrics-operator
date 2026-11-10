@@ -389,25 +389,6 @@ func splitPartRoot(stagedBase string) string {
 	return stem[:i] + run[:6] + ".csv"
 }
 
-// isCollectorOriginal reports whether stagedBase carries the collector's
-// original-report shape: a trailing six-digit run forming a valid
-// year-month. Used by splitFiles to never re-split a part (#829 review
-// C2): re-splitting a part names its outputs stem(part)+n — the
-// deterministic names of the part's own siblings — and os.Create would
-// truncate them, silently destroying their rows.
-func isCollectorOriginal(stagedBase string) bool {
-	if !strings.HasSuffix(stagedBase, ".csv") {
-		return false
-	}
-	stem := strings.TrimSuffix(stagedBase, ".csv")
-	i := len(stem)
-	for i > 0 && stem[i-1] >= '0' && stem[i-1] <= '9' {
-		i--
-	}
-	run := stem[i:]
-	return len(run) == 6 && validYearMonth(run)
-}
-
 // validYearMonth reports whether ym is six digits forming a plausible
 // year-month (year 2000+, month 01–12) — the collector's YYYYMM suffix.
 func validYearMonth(ym string) bool {
