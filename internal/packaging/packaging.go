@@ -358,6 +358,76 @@ func isSplitPartOf(stagedBase, sourceBase string) bool {
 	return true
 }
 
+// splitPartRoot returns the base name of the original that stagedBase was
+// split from, anchored on the collector's naming scheme (#829 review C1):
+// every collector filename is "<type-prefix><YYYYMM>.csv" — a trailing
+// digit run of exactly six, a valid year-month (collector.go builds all
+// eighteen reports as prefix + yearMonth). Parts append the part number
+// to the FULL original stem (writePart: "<stem><n>.csv", n ≥ 1, no
+// padding), so a part's trailing run is always YYYYMM∥partnumber — seven
+// digits or more, and the original's month is the run's first six digits,
+// an unambiguous concatenation. Part 10 of "…-202611" ("…-20261110")
+// roots to "…-202611", never to part 1 ("…-2026111").
+//
+// Returns "" when the base is not part-shaped under this scheme: a
+// six-run original (never a part — part numbers make the run ≥ 7), a
+// shorter or invalid-month run (nothing in the product writes it; the
+// recovery leaves such files alone rather than guess), or a non-CSV.
+func splitPartRoot(stagedBase string) string {
+	if !strings.HasSuffix(stagedBase, ".csv") {
+		return ""
+	}
+	stem := strings.TrimSuffix(stagedBase, ".csv")
+	i := len(stem)
+	for i > 0 && stem[i-1] >= '0' && stem[i-1] <= '9' {
+		i--
+	}
+	run := stem[i:]
+	if len(run) < 7 || !validYearMonth(run[:6]) {
+		return ""
+	}
+	return stem[:i] + run[:6] + ".csv"
+}
+
+// isCollectorOriginal reports whether stagedBase carries the collector's
+// original-report shape: a trailing six-digit run forming a valid
+// year-month. Used by splitFiles to never re-split a part (#829 review
+// C2): re-splitting a part names its outputs stem(part)+n — the
+// deterministic names of the part's own siblings — and os.Create would
+// truncate them, silently destroying their rows.
+func isCollectorOriginal(stagedBase string) bool {
+	if !strings.HasSuffix(stagedBase, ".csv") {
+		return false
+	}
+	stem := strings.TrimSuffix(stagedBase, ".csv")
+	i := len(stem)
+	for i > 0 && stem[i-1] >= '0' && stem[i-1] <= '9' {
+		i--
+	}
+	run := stem[i:]
+	return len(run) == 6 && validYearMonth(run)
+}
+
+// validYearMonth reports whether ym is six digits forming a plausible
+// year-month (year 2000+, month 01–12) — the collector's YYYYMM suffix.
+func validYearMonth(ym string) bool {
+	if len(ym) != 6 {
+		return false
+	}
+	year, month := 0, 0
+	for _, r := range ym {
+		if r < '0' || r > '9' {
+			return false
+		}
+		year = year*10 + int(r-'0')
+		month = month*10 + int(r-'0')
+	}
+	// year accumulated all six digits; recompute month from the last two.
+	month = year % 100
+	year = year / 100
+	return year >= 2000 && month >= 1 && month <= 12
+}
+
 // supersedeStagedArtifacts deletes staged entries derived from the source
 // report (#766 review findings): a prior pass may have left an old-uid copy
 // (complete or truncated — copy mode can be interrupted mid-write) or split
@@ -495,6 +565,22 @@ func (p *FilePackager) splitFiles(filePath string, fileList []os.FileInfo) ([]os
 		absPath := filepath.Join(filePath, file.Name())
 		fileSize := file.Size()
 		if fileSize >= p.maxBytes {
+			// #829 review C2: never re-split a part. A part's re-split
+			// outputs are named stem(part)+n — the deterministic names of
+			// the part's own siblings — and os.Create would truncate
+			// them, silently destroying their rows. A part can exceed
+			// maxBytes only through a single oversized row or a shrunken
+			// MaxSize between passes; it is packaged as-is so the
+			// anomaly stays visible (a possibly-oversized tarball member
+			// and a loud log line) instead of silently corrupting the
+			// archive — fail-visible over fail-silent (owner-approved
+			// 2026-11-10).
+			if splitPartRoot(stagedBaseName(file.Name())) != "" {
+				log.Info("staged split part exceeds max bytes; packaging as-is instead of re-splitting (re-split would overwrite its siblings)",
+					"file", file.Name(), "size", fileSize, "maxBytes", p.maxBytes)
+				splitFiles = append(splitFiles, file)
+				continue
+			}
 			// open the file
 			csvFile, err := os.Open(absPath)
 			if err != nil {
@@ -606,40 +692,46 @@ func (p *FilePackager) moveOrCopyFiles(cr *metricscfgv1beta1.MetricsConfig) ([]o
 		files = append(files, info)
 	}
 
-	// An original supersedes its own split parts (#766 review finding): if
-	// both the original report and parts from an interrupted split are
-	// staged, the parts are stale artifacts — this pass decides afresh
-	// whether to split (a re-split overwrites the same deterministic part
-	// names), and packaging both would duplicate the report. Parts share
-	// their original's staged uid prefix, which is what distinguishes a
-	// part of X from an independently-collected report literally named
-	// like a part.
+	// An original supersedes its own split parts, BY ROOT (#766 review
+	// finding, corrected by #829/V16-05): a staged part is stale iff its
+	// ROOT original — the base with the entire trailing digit run
+	// stripped — is present in the same uid group. The splitter removes
+	// the original only AFTER writing the full contiguous part run, so
+	// original-present ⟹ interrupted mid-split ⟹ the parts are stale
+	// (this pass decides afresh whether to split, overwriting the same
+	// deterministic part names). Root ABSENT ⟹ the split completed and
+	// the splitter removed the original: the parts are the report's ONLY
+	// representation and are all recovered. The prior pairwise form ("a
+	// part of ANY present file") misclassified part 10+ of a ≥10-part
+	// split as parts of parts 1–9 ("report10" = "report1"+"0") and
+	// deleted them, returning success over a truncated archive. Parts
+	// share their original's staged uid prefix, which is what
+	// distinguishes a part of X from an independently-collected report
+	// literally named like a part.
 	uidOf := func(name string) string {
 		if len(name) >= 37 {
 			return name[:36]
 		}
 		return ""
 	}
+	presentBases := map[string]map[string]bool{}
+	for _, f := range files {
+		fu := uidOf(f.Name())
+		if presentBases[fu] == nil {
+			presentBases[fu] = map[string]bool{}
+		}
+		presentBases[fu][stagedBaseName(f.Name())] = true
+	}
 	var recovered []os.FileInfo
 	for _, f := range files {
 		fb, fu := stagedBaseName(f.Name()), uidOf(f.Name())
-		superseded := false
-		for _, o := range files {
-			if o.Name() == f.Name() || uidOf(o.Name()) != fu {
-				continue
-			}
-			if isSplitPartOf(fb, stagedBaseName(o.Name())) {
-				superseded = true
-				break
-			}
-		}
-		if !superseded {
-			recovered = append(recovered, f)
-		} else {
+		if root := splitPartRoot(fb); root != "" && presentBases[fu][root] {
 			if err := os.Remove(filepath.Join(p.DirCfg.Staging.Path, f.Name())); err != nil {
 				return nil, fmt.Errorf("moveOrCopyFiles: could not remove superseded split part %s: %v", f.Name(), err)
 			}
+			continue
 		}
+		recovered = append(recovered, f)
 	}
 	files = recovered
 
