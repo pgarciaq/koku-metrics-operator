@@ -144,6 +144,7 @@ Queries Prometheus/Thanos for cluster metrics and generates reports.
 - Aggregation: max, min, avg, sum (see `getValue()`)
 - Data windowing: Previous full hour by default
 - Query lookback window: Auto-detected from cluster monitoring config; defaults to 14 days if unavailable (this is the Prometheus query range, not on-disk report retention)
+- Results-map identity: a query's samples are keyed by `generateKey`, which encodes the query's `RowKey` components in declared order, length-prefixed (`len:value`). Component order is part of the identity — queries that write into the same results map must declare the same `RowKey` order, and call sites that rebuild a key (`keyFromValues`) must pass the values in that order. Treat generated keys as opaque: read identity back from the row's values, never by splitting a key.
 
 **Report Generation:**
 ```go

@@ -123,17 +123,76 @@ func getResourceID(input interface{}) string {
 	return splitString[len(splitString)-1]
 }
 
+// generateKey returns the identity of a Prometheus series inside one results map.
+//
+// The i-th component is the value of keys[i], so the RowKey order is part of the
+// identity: queries that write into the same results map must declare the same
+// RowKey order, and a reordered RowKey is a different row, not the same one.
+// Components are length-prefixed ("len:value") so the encoding is injective for
+// arbitrary label values: no value can impersonate a component boundary, and no
+// two distinct label tuples share a key.
 func generateKey(metric model.Metric, keys []model.LabelName) string {
 	if len(keys) == 1 {
+		// Single-component keys are the raw value: several call sites (namespace
+		// usage rows, ClusterResourceQuota rows) use that value directly as a
+		// lookup key.
 		return string(metric[keys[0]])
 	}
-	result := []string{}
-	for _, key := range keys {
-		result = append(result, string(metric[key]))
-	}
-	sort.Strings(result)
 
-	return strings.Join(result, ",")
+	size := 0
+	for _, key := range keys {
+		size += keyPartSize(string(metric[key]))
+	}
+
+	var b strings.Builder
+	b.Grow(size)
+	for _, key := range keys {
+		writeKeyPart(&b, string(metric[key]))
+	}
+	return b.String()
+}
+
+// keyFromValues encodes ordered components exactly as generateKey does. Callers
+// that rebuild the key of a map populated by generateKey must pass the values in
+// that query's RowKey order.
+func keyFromValues(values ...string) string {
+	if len(values) == 1 {
+		return values[0]
+	}
+
+	size := 0
+	for _, value := range values {
+		size += keyPartSize(value)
+	}
+
+	var b strings.Builder
+	b.Grow(size)
+	for _, value := range values {
+		writeKeyPart(&b, value)
+	}
+	return b.String()
+}
+
+// keyPartSize is the encoded size of one component: its length, the digits of
+// that length, and the ':' separator.
+func keyPartSize(part string) int {
+	return len(part) + decimalDigits(len(part)) + 1
+}
+
+func decimalDigits(n int) int {
+	digits := 1
+	for n >= 10 {
+		n /= 10
+		digits++
+	}
+	return digits
+}
+
+func writeKeyPart(b *strings.Builder, part string) {
+	var lenBuf [20]byte
+	b.Write(strconv.AppendInt(lenBuf[:0], int64(len(part)), 10))
+	b.WriteByte(':')
+	b.WriteString(part)
 }
 
 func (r *mappedResults) iterateVector(vector model.Vector, q query) {
@@ -639,13 +698,13 @@ func generateCostNvidiaGpuMetricsReport(log gologr.Logger, c *PrometheusCollecto
 				mergeMappedValues(gpuVal, maxSlicesData)
 			}
 		} else {
-			// Non-MIG capacity data is keyed by pod/namespace/node.
+			// Non-MIG capacity data is keyed by costNvidiaGpuMemoryCapacityNonMIGQueries.RowKey
+			// (pod, namespace, node), so rebuild that identity from the utilization row's
+			// decoded fields. The order must match the capacity query's RowKey.
 			pod, _ := gpuVal["pod"].(string)
 			namespace, _ := gpuVal["namespace"].(string)
 			node, _ := gpuVal["node"].(string)
-			resourceKeyParts := []string{pod, namespace, node}
-			sort.Strings(resourceKeyParts)
-			resourceKey := strings.Join(resourceKeyParts, ",")
+			resourceKey := keyFromValues(pod, namespace, node)
 			if nonMIGMemoryResourceData, ok := gpuNonMIGCapacityResults[resourceKey]; ok {
 				mergeMappedValues(gpuVal, nonMIGMemoryResourceData)
 			}

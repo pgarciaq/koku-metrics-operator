@@ -6,7 +6,6 @@
 package collector
 
 import (
-	"sort"
 	"strconv"
 	"strings"
 
@@ -135,10 +134,9 @@ func pivotNamespaceQuotaResults(raw mappedResults) mappedResults {
 	return out
 }
 
-// makeQuotaPivotKey produces the same key format that generateKey produces
-// for RowKey []model.LabelName{"namespace", "resourcequota"} — sorted values joined by comma.
+// makeQuotaPivotKey returns the map identity of a (namespace, ResourceQuota)
+// pair. It follows the same injective encoding as generateKey; consumers read
+// the pair back from the row values, never by taking the key apart.
 func makeQuotaPivotKey(namespace, resourcequota string) string {
-	parts := []string{namespace, resourcequota}
-	sort.Strings(parts)
-	return strings.Join(parts, ",")
+	return keyFromValues(namespace, resourcequota)
 }
