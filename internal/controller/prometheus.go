@@ -30,6 +30,10 @@ var (
 	promConnSetter collector.PrometheusConnectionSetter    = collector.SetPrometheusConnection
 	promConnTester collector.PrometheusConnectionTester    = collector.TestPrometheusConnection
 
+	// generateReports is a test seam for asserting collectPromStats'
+	// sentinel handling without a live Prometheus (#768).
+	generateReports = collector.GenerateReports
+
 	retryTracker map[time.Time]int = make(map[time.Time]int)
 )
 
@@ -175,7 +179,7 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 
 	log.Info("generating reports for range", "start", formattedStart, "end", formattedEnd)
 	r.promCollector.RestConfig = r.restConfig
-	if err := collector.GenerateReports(cr, dirCfg, r.promCollector); err != nil {
+	if err := generateReports(cr, dirCfg, r.promCollector); err != nil {
 		cr.Status.Reports.DataCollected = false
 		if errors.Is(err, collector.ErrNoData) {
 			cr.Status.Prometheus.LastQuerySuccessTime = t
@@ -184,8 +188,10 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 		} else if errors.Is(err, collector.ErrROSNoEnabledNamespaces) {
 			cr.Status.Prometheus.LastQuerySuccessTime = t
 			cr.Status.Reports.DataCollected = true
-			cr.Status.Reports.DataCollectionMessage = "No namespaces contain the `cost_management_optimizations=\"true\"` label, so no resource optimization metrics were collected."
-			log.Info("no namespaces contain the `cost_management_optimizations=\"true\"` label, so no resource optimization metrics were collected")
+			cr.Status.Reports.DataCollectionMessage = "Cluster-level metrics were collected, but no namespaces contain the " +
+				"`cost_management_optimizations=\"true\"` label, so no container or namespace metrics were collected for " +
+				"resource optimization."
+			log.Info("no namespaces contain the `cost_management_optimizations=\"true\"` label; cluster-level metrics were collected without container or namespace metrics")
 		} else {
 			retryTracker[timeRange.Start]++
 			cr.Status.Reports.DataCollectionMessage = fmt.Sprintf("error: %v", err)
