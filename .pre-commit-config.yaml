@@ -1,5 +1,16 @@
 repos:
 - repo: https://github.com/golangci/golangci-lint
-  rev: v2.8.0
+  # Pinned to the version CI installs (#813), so local and CI cannot drift.
+  rev: v2.15.0
   hooks:
-    - id: golangci-lint
+    # Check only: the upstream entry adds `--new-from-rev HEAD --fix`, which both
+    # hides pre-existing findings and rewrites the tree (#813).
+    - id: golangci-lint-full
+      name: golangci-lint (check)
+      entry: golangci-lint run --fix=false
+    # Opt-in fixer (`make lint-fix`); never runs on commit.
+    - id: golangci-lint-full
+      name: golangci-lint (fix)
+      alias: golangci-lint-fix
+      entry: golangci-lint run --fix
+      stages: [manual]
