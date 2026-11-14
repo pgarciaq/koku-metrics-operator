@@ -131,7 +131,8 @@ Branch naming conventions: `feature/`, `fix/`, `docs/`, `refactor/`
 ```bash
 make test              # run all tests
 make fmt               # format code
-make lint              # run linters
+make lint              # check linting (does not modify files)
+make lint-fix          # apply golangci-lint fixes (modifies files)
 make verify-manifests  # if CRD or RBAC changed
 ```
 

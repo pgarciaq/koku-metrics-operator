@@ -18,7 +18,10 @@ linters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  fix: true
+  # #813: the gate reports, it never rewrites. A rewriting linter exits 0 after
+  # changing the tree, so a dirty tree could never fail. Fixes are opt-in via
+  # `make lint-fix`.
+  fix: false
 formatters:
   enable:
     - gofmt

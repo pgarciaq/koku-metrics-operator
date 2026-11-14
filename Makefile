@@ -135,7 +135,12 @@ fmt: ## Run go fmt against code.
 	go fmt ./...
 
 .PHONY: lint
-lint: ## Run pre-commit
+lint: ## Check linting without modifying the working tree
+	pre-commit run --all-files
+
+.PHONY: lint-fix
+lint-fix: ## Apply golangci-lint fixes (modifies the working tree)
+	-pre-commit run --hook-stage manual golangci-lint-fix --all-files
 	pre-commit run --all-files
 
 .PHONY: vet

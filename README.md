@@ -59,7 +59,11 @@ Linting can be performed with the following make commands:
 ```
 make fmt
 make lint
+make lint-fix   # applies golangci-lint fixes, then re-checks
 ```
+
+`make lint` reports findings and never modifies the tree; run `make lint-fix` when
+you want the fixes applied.
 
 ## AI-Assisted Development
 

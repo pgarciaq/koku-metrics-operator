@@ -28,6 +28,11 @@ jobs:
           go-version-file: go.mod
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
+        with:
+          # #813: pin what the pre-commit hook pins, and never let the gate
+          # rewrite the tree instead of failing on it.
+          version: v2.15.0
+          args: --fix=false
       - name: Verify generated Manifests are up to date
         run: make verify-manifests
 
