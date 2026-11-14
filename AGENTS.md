@@ -121,14 +121,11 @@ make verify-manifests   # verify CRD/RBAC manifests are up to date
 ## Contributor Workflow (Pre-PR)
 
 - Minimum local check before commit: `make fmt && make test`
-- `make lint` is not CI's lint. The pre-commit hook runs
-  `golangci-lint run --new-from-rev HEAD --fix`, so it only reports issues on
-  lines changed since `HEAD`, while `validate-pr` runs plain `golangci-lint run`.
-  Removing the last *use* of a variable leaves the `unused` finding on an
-  unchanged declaration line and passes locally, so run what CI runs before
-  pushing that kind of change: `golangci-lint run ./...`. `.golangci.yaml` sets
-  `issues.fix: true`, so that run may autofix unrelated files — revert anything
-  outside your change.
+- `make lint` checks the whole module and never rewrites the tree: the pre-commit
+  hook runs `golangci-lint run --fix=false` at the same pinned rev CI installs
+  (v2.15.0), so local and CI agree and a dirty tree fails instead of being
+  silently fixed (#813). To apply the fixes, run `make lint-fix`, which invokes
+  the same linter with `--fix` and then re-runs the check.
 - Recommended pre-PR checklist:
   - `make fmt`
   - `make lint`
