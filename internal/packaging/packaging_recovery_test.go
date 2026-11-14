@@ -843,3 +843,334 @@ func TestPackageReports_OversizedPartPackagedAsIs(t *testing.T) {
 		}
 	}
 }
+
+// TestWriteSplitTarballSet_FailureLeavesNoFinalizedParts is #836's RED:
+// the split set must finalize ALL-OR-NOTHING. A failure partway through
+// the set must never leave already-finalized tarballs in upload — the
+// uploader uploads everything present (no prune/dedup), and the retry
+// packages under a fresh timestamp, so a lingering partial set uploads
+// alongside the new full set and duplicates the shared reports
+// server-side. Baseline: part 0 finalizes before part 1's injected
+// failure → one finalized tarball remains.
+//
+// The injection is deterministic at this level: the part names are
+// known (the test drives the extracted set writer directly), and a
+// pre-created DIRECTORY at part 1's temp path makes os.Create fail
+// for exactly that part.
+func TestWriteSplitTarballSet_FailureLeavesNoFinalizedParts(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &dirconfig.DirectoryConfig{
+		Parent:  dirconfig.Directory{Path: dir},
+		Upload:  dirconfig.Directory{Path: filepath.Join(dir, "upload")},
+		Staging: dirconfig.Directory{Path: filepath.Join(dir, "staging")},
+		Reports: dirconfig.Directory{Path: filepath.Join(dir, "data")},
+	}
+	if err := dirconfig.CheckExistsOrRecreate(cfg.Upload, cfg.Staging, cfg.Reports); err != nil {
+		t.Fatalf("dirs: %v", err)
+	}
+	p := &FilePackager{DirCfg: cfg, FilesAction: MoveFiles}
+	// A real rendered manifest at its production path (staging/manifest.json)
+	// — writeTarball adds it to every part.
+	p.manifest.filename = filepath.Join(cfg.Staging.Path, "manifest.json")
+	if err := os.WriteFile(p.manifest.filename, []byte(`{"uuid":"m-836"}`), 0644); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+
+	// Two staged files → a two-part set under a known base.
+	writeReport(t, cfg.Staging.Path, "ros-openshift-reportA.csv")
+	writeReport(t, cfg.Staging.Path, "ros-openshift-reportB.csv")
+	tracker := newFileTracker()
+	tracker.allfiles[0] = filepath.Join(cfg.Staging.Path, "ros-openshift-reportA.csv")
+	tracker.allfiles[1] = filepath.Join(cfg.Staging.Path, "ros-openshift-reportB.csv")
+
+	// Inject part 1's write failure: a directory at its temp path makes
+	// os.Create fail. Under the #836 transactional set, parts write
+	// under pending names ("<final>.part"), so part 1's #766 temp is
+	// "base-1.part.tar.tmp".
+	if err := os.Mkdir(filepath.Join(cfg.Upload.Path, "base-1.part.tar.tmp"), 0755); err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+
+	err := p.writeSplitTarballSet("base", tracker)
+	if err == nil {
+		t.Fatal("the injected part-1 failure must fail the set write")
+	}
+
+	// THE #836 INVARIANT: zero finalized tarballs — the upload directory
+	// must never hold a partial split set. Baseline: part 0 finalized.
+	finals := listTarGzIn(t, cfg.Upload.Path)
+	if len(finals) != 0 {
+		t.Fatalf("a failed split set must leave ZERO finalized tarballs; found %v (#836)", finals)
+	}
+}
+
+// listTarGzIn lists the finalized tarballs (the uploader's candidates)
+// in dir.
+func listTarGzIn(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("listTarGzIn: %v", err)
+	}
+	var out []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".tar.gz") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+// TestPackageReports_SplitFailureRetryUploadsExactlyOnce is #836's
+// integration repro: a split packaging failing partway (the second
+// part's staged file unreadable), then the retry — the upload
+// directory must contain ONLY the new full set, each report's content
+// exactly once. Baseline: the failed pass left the first part
+// finalized in upload; the retry added the fresh full set alongside
+// it — the uploader (no prune/dedup) would upload both.
+func TestPackageReports_SplitFailureRetryUploadsExactlyOnce(t *testing.T) {
+	var bMoves atomic.Int32
+	chmodB := func(from, to string) error {
+		if err := MoveFiles(from, to); err != nil {
+			return err
+		}
+		// On B's first move: make it unreadable so B's PART write fails
+		// at open — after A's part has already finalized (sorted part
+		// order; B's name sorts after A's).
+		if strings.Contains(to, "reportB") && bMoves.Add(1) == 1 {
+			if err := os.Chmod(to, 0000); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	p, cr := newRecoveryPackager(t, chmodB)
+	cr.Status.Packaging.MaxSize = ptr(int64(1)) // 1 MiB → split for two ~600KB reports
+
+	// Two reports large enough to force the split path.
+	bigRow := strings.Repeat("x", 600*1024)
+	for _, name := range []string{"ros-openshift-reportA.csv", "ros-openshift-reportB.csv"} {
+		content := "report_period_start,report_period_end,interval_start,interval_end,node,node_labels\n" +
+			"2020-10-01 00:00:00 +0000 UTC,2020-11-01 00:00:00 +0000 UTC,2020-10-01 00:00:00 +0000 UTC,2020-10-01 01:00:00 +0000 UTC," + name + "," + bigRow + "\n"
+		if err := os.WriteFile(filepath.Join(p.DirCfg.Reports.Path, name), []byte(content), 0644); err != nil {
+			t.Fatalf("write big report: %v", err)
+		}
+	}
+
+	// Pass 1: A moves + its part finalizes; B's move chmods it unreadable
+	// → B's part write fails → the pass fails.
+	err := p.PackageReports(cr)
+	if err == nil {
+		t.Fatal("pass 1 must fail on B's unreadable part")
+	}
+	if finals := listTarGzIn(t, p.DirCfg.Upload.Path); len(finals) != 0 {
+		t.Fatalf("a failed split pass must leave ZERO finalized tarballs; found %v (#836)", finals)
+	}
+
+	// The retry: B readable again, the staging-retention recovery
+	// (#766/#829) re-packages both. (Staged names carry the packager's
+	// UUID prefix — find B by marker.)
+	stagedB := ""
+	for _, name := range listReportsIn(t, p.DirCfg.Staging.Path) {
+		if strings.Contains(name, "reportB") {
+			stagedB = filepath.Join(p.DirCfg.Staging.Path, name)
+		}
+	}
+	if stagedB == "" {
+		t.Fatal("B must remain staged after the failed pass (#766 retention)")
+	}
+	if err := os.Chmod(stagedB, 0644); err != nil {
+		t.Fatalf("chmod B back: %v", err)
+	}
+	cr.Status.Packaging.PackagingError = ""
+	if err := p.PackageReports(cr); err != nil {
+		t.Fatalf("the retry must succeed: %v", err)
+	}
+
+	// Exactly-once: every marker appears exactly once across the whole
+	// finalized set, and no stale pending files linger.
+	_, _, csvContent := allArchiveMembersWithContent(t, p.DirCfg.Upload.Path)
+	for _, marker := range []string{"reportA", "reportB"} {
+		if n := strings.Count(csvContent, marker); n != 1 {
+			t.Fatalf("marker %s must appear exactly once across the set; got %d (#836)", marker, n)
+		}
+	}
+	entries, err := os.ReadDir(p.DirCfg.Upload.Path)
+	if err != nil {
+		t.Fatalf("read upload: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".part") || strings.Contains(e.Name(), ".tar.tmp") {
+			t.Fatalf("no stale pending/temp files may linger; found %s (#836)", e.Name())
+		}
+	}
+}
+
+// TestWriteSplitTarballSet_SweepsStalePendings pins the crash-window
+// sweep: pending files from a crashed attempt (never uploaded — the
+// names avoid the "tar.gz" substring — but garbage) are removed at the
+// next set write.
+func TestWriteSplitTarballSet_SweepsStalePendings(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &dirconfig.DirectoryConfig{
+		Parent:  dirconfig.Directory{Path: dir},
+		Upload:  dirconfig.Directory{Path: filepath.Join(dir, "upload")},
+		Staging: dirconfig.Directory{Path: filepath.Join(dir, "staging")},
+		Reports: dirconfig.Directory{Path: filepath.Join(dir, "data")},
+	}
+	if err := dirconfig.CheckExistsOrRecreate(cfg.Upload, cfg.Staging, cfg.Reports); err != nil {
+		t.Fatalf("dirs: %v", err)
+	}
+	p := &FilePackager{DirCfg: cfg, FilesAction: MoveFiles}
+	p.manifest.filename = filepath.Join(cfg.Staging.Path, "manifest.json")
+	if err := os.WriteFile(p.manifest.filename, []byte(`{"uuid":"m-sweep"}`), 0644); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	writeReport(t, cfg.Staging.Path, "ros-openshift-reportA.csv")
+	tracker := newFileTracker()
+	tracker.allfiles[0] = filepath.Join(cfg.Staging.Path, "ros-openshift-reportA.csv")
+
+	// A stale pending from a crashed attempt.
+	if err := os.WriteFile(filepath.Join(cfg.Upload.Path, "old-crashed.part"), []byte("stale"), 0644); err != nil {
+		t.Fatalf("stale: %v", err)
+	}
+
+	if err := p.writeSplitTarballSet("base", tracker); err != nil {
+		t.Fatalf("set write: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Upload.Path, "old-crashed.part")); !os.IsNotExist(err) {
+		t.Fatalf("the stale pending must be swept; stat err = %v", err)
+	}
+	if finals := listTarGzIn(t, cfg.Upload.Path); len(finals) != 1 {
+		t.Fatalf("exactly one finalized part expected; got %v", finals)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// TestWriteSplitTarballSet_CommitMarkerIsThePublishGate pins the #836
+// review-P2 protocol: the set marker is written only after every
+// rename succeeded — a part-shaped tarball without its marker is an
+// orphaned partial set (a crash between renames, or a failed
+// compensation): the uploader's gate refuses it and the next pass's
+// sweep removes it.
+func TestWriteSplitTarballSet_CommitMarkerIsThePublishGate(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &dirconfig.DirectoryConfig{
+		Parent:  dirconfig.Directory{Path: dir},
+		Upload:  dirconfig.Directory{Path: filepath.Join(dir, "upload")},
+		Staging: dirconfig.Directory{Path: filepath.Join(dir, "staging")},
+		Reports: dirconfig.Directory{Path: filepath.Join(dir, "data")},
+	}
+	if err := dirconfig.CheckExistsOrRecreate(cfg.Upload, cfg.Staging, cfg.Reports); err != nil {
+		t.Fatalf("dirs: %v", err)
+	}
+	p := &FilePackager{DirCfg: cfg, FilesAction: MoveFiles}
+	p.manifest.filename = filepath.Join(cfg.Staging.Path, "manifest.json")
+	if err := os.WriteFile(p.manifest.filename, []byte(`{"uuid":"m-gate"}`), 0644); err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	writeReport(t, cfg.Staging.Path, "ros-openshift-reportA.csv")
+	writeReport(t, cfg.Staging.Path, "ros-openshift-reportB.csv")
+	tracker := newFileTracker()
+	tracker.allfiles[0] = filepath.Join(cfg.Staging.Path, "ros-openshift-reportA.csv")
+	tracker.allfiles[1] = filepath.Join(cfg.Staging.Path, "ros-openshift-reportB.csv")
+
+	// A successful set write: every part finalized AND the marker present.
+	if err := p.writeSplitTarballSet("base", tracker); err != nil {
+		t.Fatalf("set write: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Upload.Path, "base.set")); err != nil {
+		t.Fatalf("the commit marker must exist after a successful set: %v", err)
+	}
+
+	// Simulate the crash window: an unmarked part-shaped final (a crash
+	// between renames — compensation never ran). The sweep must remove
+	// it; the gate (tested at the controller level) refuses it first.
+	if err := os.WriteFile(filepath.Join(cfg.Upload.Path, "crashed-0.tar.gz"), []byte("orphan"), 0644); err != nil {
+		t.Fatalf("orphan: %v", err)
+	}
+	if err := sweepOrphanedSplitArtifacts(cfg.Upload.Path); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Upload.Path, "crashed-0.tar.gz")); !os.IsNotExist(err) {
+		t.Fatalf("the unmarked orphaned part must be swept; stat err = %v", err)
+	}
+	// The MARKED set survives the sweep.
+	if finals := listTarGzIn(t, cfg.Upload.Path); len(finals) != 2 {
+		t.Fatalf("the marked set must survive; got %v", finals)
+	}
+}
+
+// TestSweepOrphanedSplitArtifacts_NonSplitPathRunsToo pins the review
+// P3: the sweep runs on every packaging pass — a non-split retry must
+// clear stale split-set residue (pendings and unmarked part-shaped
+// finals), not just the split path.
+func TestSweepOrphanedSplitArtifacts_NonSplitPathRunsToo(t *testing.T) {
+	dir := t.TempDir()
+	upload := filepath.Join(dir, "upload")
+	if err := os.MkdirAll(upload, 0755); err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	// Stale residue from an old crashed split attempt.
+	if err := os.WriteFile(filepath.Join(upload, "old-0.part"), []byte("p"), 0644); err != nil {
+		t.Fatalf("part: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(upload, "old-0.tar.gz"), []byte("orphan"), 0644); err != nil {
+		t.Fatalf("orphan: %v", err)
+	}
+	// A spent marker (its set fully uploaded).
+	if err := os.WriteFile(filepath.Join(upload, "spent.set"), []byte("2"), 0644); err != nil {
+		t.Fatalf("marker: %v", err)
+	}
+
+	if err := sweepOrphanedSplitArtifacts(upload); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	entries, err := os.ReadDir(upload)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(entries) != 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("all residue must be swept; found %v", names)
+	}
+}
+
+// TestSweepOrphanedSplitArtifacts_InconsistentCommittedSet pins the
+// marker-protocol consistency rule: a marker coexisting with its own
+// base's pending files is an inconsistently committed set (the
+// marker-before-renames bug shape) — the whole set is cleaned. This is
+// the discriminator for the commit-point ordering (mutation M4).
+func TestSweepOrphanedSplitArtifacts_InconsistentCommittedSet(t *testing.T) {
+	dir := t.TempDir()
+	upload := filepath.Join(dir, "upload")
+	if err := os.MkdirAll(upload, 0755); err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	// The inconsistent state: a marker, one renamed final, one pending
+	// left over (a crash between renames AFTER a premature marker).
+	for _, f := range []string{"bad.set", "bad-0.tar.gz", "bad-1.part"} {
+		if err := os.WriteFile(filepath.Join(upload, f), []byte("x"), 0644); err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+	}
+
+	if err := sweepOrphanedSplitArtifacts(upload); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	entries, err := os.ReadDir(upload)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(entries) != 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("an inconsistently committed set must be fully cleaned; found %v", names)
+	}
+}

@@ -256,6 +256,215 @@ func (p *FilePackager) addFileToTarWriter(uploadName, filePath string, tarWriter
 	return nil
 }
 
+// writeSplitTarballSet writes the split archive set: one tarball per
+// staged file, each named <filenameBase>-<idx>.tar.gz, all sharing the
+// one manifest. #836: the set must finalize ALL-OR-NOTHING — a failure
+// partway through the set must never leave already-finalized tarballs
+// in the upload directory. The uploader uploads everything present
+// (no prune/dedup; removal only on a 202), and the retry packages
+// under a FRESH timestamp — a lingering partial set from a failed pass
+// would upload alongside the new full set, duplicating the reports
+// they share server-side.
+func (p *FilePackager) writeSplitTarballSet(filenameBase string, tracker fileTracker) error {
+	// Deterministic part order (sorted idx) — map iteration is random,
+	// and the set's semantics must not depend on which part happens to
+	// write first.
+	idxs := make([]int, 0, len(tracker.allfiles))
+	for idx := range tracker.allfiles {
+		idxs = append(idxs, idx)
+	}
+	sort.Ints(idxs)
+
+	// #836: all-or-nothing finalize. Parts first write under PENDING
+	// names ("<final>.part" — deliberately avoiding the "tar.gz"
+	// substring, which the uploader selects by, so a lingering pending
+	// file can never upload), and the set renames into the final names
+	// only after every part finalized. A failure partway removes the
+	// pendings and any already-renamed finals (rename-loop compensation;
+	// a failed compensation is SURFACED — the set marker below is never
+	// written, so the parts stay unpublishable and the next run's sweep
+	// (sweepOrphanedSplitArtifacts) removes them). The SET MARKER
+	// ("<base>.set") is written only after every rename succeeded — the
+	// commit point. The uploader refuses part-shaped tarballs without
+	// their marker, so a crash between renames (compensation never runs)
+	// still cannot publish a partial set. Stale pendings, orphaned
+	// unmarked part-shaped finals, and fully-uploaded markers are swept
+	// at every packaging pass (sweepOrphanedSplitArtifacts — both the
+	// split and non-split paths, #836 review P3).
+	if err := sweepOrphanedSplitArtifacts(p.DirCfg.Upload.Path); err != nil {
+		return fmt.Errorf("writeSplitTarballSet: sweep: %v", err)
+	}
+	type partName struct{ pending, final string }
+	written := make([]partName, 0, len(idxs))
+	var cleanupErr error
+	cleanup := func() {
+		for _, w := range written {
+			if err := os.Remove(w.pending); err != nil && cleanupErr == nil {
+				cleanupErr = fmt.Errorf("writeSplitTarballSet: cleanup: removing %s: %v", w.pending, err)
+			}
+			if err := os.Remove(w.final); err != nil && cleanupErr == nil {
+				cleanupErr = fmt.Errorf("writeSplitTarballSet: cleanup: removing %s: %v", w.final, err)
+			}
+		}
+	}
+	for _, idx := range idxs {
+		fileMap := map[int]string{idx: tracker.allfiles[idx]}
+		finalName := filenameBase + "-" + strconv.Itoa(idx) + ".tar.gz"
+		pendingName := strings.TrimSuffix(finalName, ".tar.gz") + ".part"
+		if err := p.writeTarball(pendingName, p.manifest.filename, fileMap); err != nil {
+			cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("%v (set left unmarked — unpublishable; the next pass sweeps it)", cleanupErr)
+			}
+			return err
+		}
+		written = append(written, partName{pending: filepath.Join(p.DirCfg.Upload.Path, pendingName),
+			final: filepath.Join(p.DirCfg.Upload.Path, finalName)})
+	}
+	for _, w := range written {
+		if err := os.Rename(w.pending, w.final); err != nil {
+			cleanup()
+			if cleanupErr != nil {
+				return fmt.Errorf("%v (set left unmarked — unpublishable; the next pass sweeps it)", cleanupErr)
+			}
+			return fmt.Errorf("writeSplitTarballSet: finalizing part set: %v", err)
+		}
+	}
+	// The commit point: the marker makes the set publishable.
+	markerPath := filepath.Join(p.DirCfg.Upload.Path, filenameBase+".set")
+	if err := os.WriteFile(markerPath, []byte(strconv.Itoa(len(written))), 0644); err != nil {
+		return fmt.Errorf("writeSplitTarballSet: writing set marker: %v", err)
+	}
+	return nil
+}
+
+// sweepOrphanedSplitArtifacts cleans the upload directory of split-set
+// residue (#836): stale pending files (".part" — a crashed attempt),
+// part-shaped finalized tarballs ("-<n>.tar.gz") WITHOUT their set
+// marker (a crash between renames, or a failed compensation —
+// unpublishable by the uploader's marker gate, removed here), and set
+// markers whose finals are all gone (a fully-uploaded set). Runs on
+// every packaging pass, both the split and non-split paths.
+//
+// Version-skew note: part-shaped tarballs written by operator versions
+// predating the marker protocol also lack markers and are swept —
+// deploy the marker-aware operator when no old-format split sets are
+// stuck in upload (stuck-upload residue is the only shape affected).
+func sweepOrphanedSplitArtifacts(uploadPath string) error {
+	entries, err := os.ReadDir(uploadPath)
+	if err != nil {
+		return err
+	}
+	marked := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".set") {
+			marked[strings.TrimSuffix(e.Name(), ".set")] = true
+		}
+	}
+	// Consistency rule: a committed marker (written only after every
+	// rename succeeded) never coexists with its own base's PENDING
+	// files. Marker + same-base pending = an inconsistently committed
+	// set (a marker-before-renames bug shape, or FS-level weirdness) —
+	// clean the whole set: marker, finals, and pendings.
+	for base := range marked {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".part") && strings.HasPrefix(e.Name(), base+"-") {
+				if err := removeSplitSet(uploadPath, entries, base); err != nil {
+					return err
+				}
+				delete(marked, base)
+				break
+			}
+		}
+	}
+	// removeIfGone: the consistency rule above may already have removed
+	// entries — the stale snapshot must treat "no such file" as done.
+	removeOrGone := func(full, kind string) error {
+		if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("sweep: removing %s %s: %v", kind, filepath.Base(full), err)
+		}
+		return nil
+	}
+	for _, e := range entries {
+		name := e.Name()
+		full := filepath.Join(uploadPath, name)
+		switch {
+		case strings.HasSuffix(name, ".part"):
+			if err := removeOrGone(full, "pending"); err != nil {
+				return err
+			}
+		case IsPartShapedTarball(name) && !marked[SplitSetBase(name)]:
+			if err := removeOrGone(full, "orphaned part"); err != nil {
+				return err
+			}
+		case strings.HasSuffix(name, ".set"):
+			base := strings.TrimSuffix(name, ".set")
+			if !marked[base] {
+				continue // removed by the consistency rule above
+			}
+			if !anyFinalForBase(entries, base) {
+				if err := removeOrGone(full, "spent marker"); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// removeSplitSet removes a set's marker, its part-shaped finals, and
+// its pendings — the inconsistently-committed-set cleanup.
+func removeSplitSet(uploadPath string, entries []os.DirEntry, base string) error {
+	for _, e := range entries {
+		name := e.Name()
+		if name == base+".set" ||
+			(strings.HasPrefix(name, base+"-") && (IsPartShapedTarball(name) || strings.HasSuffix(name, ".part"))) {
+			if err := os.Remove(filepath.Join(uploadPath, name)); err != nil {
+				return fmt.Errorf("sweep: removing inconsistent set member %s: %v", name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// isPartShapedTarball reports whether name is a split part's finalized
+// name: "<base>-<n>.tar.gz" with a numeric part suffix.
+func IsPartShapedTarball(name string) bool {
+	if !strings.HasSuffix(name, ".tar.gz") {
+		return false
+	}
+	stem := strings.TrimSuffix(name, ".tar.gz")
+	dash := strings.LastIndex(stem, "-")
+	if dash < 0 || dash == len(stem)-1 {
+		return false
+	}
+	for _, c := range stem[dash+1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// splitSetBase returns the set base of a part-shaped name (the name
+// minus "-<n>.tar.gz").
+func SplitSetBase(name string) string {
+	stem := strings.TrimSuffix(name, ".tar.gz")
+	dash := strings.LastIndex(stem, "-")
+	return stem[:dash]
+}
+
+// anyFinalForBase reports whether any entry is a part-shaped tarball of
+// the given set base.
+func anyFinalForBase(entries []os.DirEntry, base string) bool {
+	for _, e := range entries {
+		if IsPartShapedTarball(e.Name()) && SplitSetBase(e.Name()) == base {
+			return true
+		}
+	}
+	return false
+}
+
 // writeTarball packages the files into tar balls
 func (p *FilePackager) writeTarball(tarFileName, manifestFileName string, archiveFiles map[int]string) error {
 	tarFilePath := filepath.Join(p.DirCfg.Upload.Path, tarFileName)
@@ -822,14 +1031,15 @@ func (p *FilePackager) PackageReports(cr *metricscfgv1beta1.MetricsConfig) error
 	filenameBase := p.createdTimestamp + "-cost-mgmt"
 
 	if split {
-		for idx, fileName := range tracker.allfiles {
-			fileMap := map[int]string{idx: fileName}
-			tarFileName := filenameBase + "-" + strconv.Itoa(idx) + ".tar.gz"
-			if err := p.writeTarball(tarFileName, p.manifest.filename, fileMap); err != nil {
-				return fmt.Errorf("PackageReports: %v", err)
-			}
+		if err := p.writeSplitTarballSet(filenameBase, tracker); err != nil {
+			return fmt.Errorf("PackageReports: %v", err)
 		}
 	} else {
+		// #836 review P3: the sweep runs on every packaging pass — a
+		// non-split retry must also clear stale split-set residue.
+		if err := sweepOrphanedSplitArtifacts(p.DirCfg.Upload.Path); err != nil {
+			return fmt.Errorf("PackageReports: sweep: %v", err)
+		}
 		tarFileName := filenameBase + ".tar.gz"
 		if err := p.writeTarball(tarFileName, p.manifest.filename, tracker.allfiles); err != nil {
 			return fmt.Errorf("PackageReports: %v", err)

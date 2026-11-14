@@ -597,6 +597,18 @@ func (r *MetricsConfigReconciler) uploadFiles(authConfig *crhchttp.AuthConfig, c
 		if !strings.Contains(file, "tar.gz") {
 			continue
 		}
+		// #836: the split-set marker gate — a part-shaped tarball without
+		// its "<base>.set" marker is an orphaned partial set (a crash
+		// between renames, or a failed compensation): never uploadable.
+		// The next packaging pass sweeps it.
+		if packaging.IsPartShapedTarball(file) {
+			marker := filepath.Join(dirCfg.Upload.Path, packaging.SplitSetBase(file)+".set")
+			if _, err := os.Stat(marker); err != nil {
+				log.Error(fmt.Errorf("no set marker for part %s", file),
+					"skipping orphaned split-set part (no .set marker — #836)")
+				continue
+			}
+		}
 
 		manifestInfo, err := packager.GetFileInfo(filepath.Join(dirCfg.Upload.Path, file))
 		if err != nil {
