@@ -770,6 +770,11 @@ func TestGenerateReportsNoNodeData(t *testing.T) {
 		}
 	}
 	addNodeAllocCapMockResults(mapResults, t, false)
+	// #811: the no-node-data path now also runs the cluster-level rollups, so
+	// their queries must be answered. They return nothing here, which is what
+	// this control test needs: no deliverable can produce a row, so the outcome
+	// must stay a plain ErrNoData (not ErrNoDataPartial) and no file may appear.
+	addAPITaxMockResults(mapResults, false)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -779,8 +784,9 @@ func TestGenerateReportsNoNodeData(t *testing.T) {
 		},
 		TimeSeries: &copyfakeTimeRange,
 	}
-	if err := GenerateReports(fakeCR, fakeDirCfg, fakeCollector); err != nil && err != ErrNoData {
-		t.Errorf("Failed to generate reports: %v", err)
+	if err := GenerateReports(fakeCR, fakeDirCfg, fakeCollector); !errors.Is(err, ErrNoData) {
+		t.Errorf("GenerateReports err = %v, want ErrNoData: nothing was collected, so the hour "+
+			"must not be reported as partial (#811)", err)
 	}
 	filelist, err := os.ReadDir(filepath.Join("test_files", "test_reports"))
 	if err != nil {
@@ -1559,4 +1565,190 @@ func TestRestartCountQueryShape(t *testing.T) {
 	if !strings.Contains(q, "label_hypershift_openshift_io_hosted_control_plane") {
 		t.Errorf("restart query must filter label_hypershift_openshift_io_hosted_control_plane, got: %s", q)
 	}
+}
+
+// #811: an hour whose node metric group is empty must still collect the
+// deliverables that do not need it. This is the Kubernetes-API half: the
+// NodePool inventory and the fleet-capacity snapshot. Before the fix the
+// early `return ErrNoData` dropped both, so the CSVs below did not exist.
+func TestGenerateReportsNoNodeDataCollectsK8sInventory(t *testing.T) {
+	logf.SetLogger(testutils.ZapLogger(true))
+	origMaxRetries := MaxRetries
+	MaxRetries = 1
+	t.Cleanup(func() { MaxRetries = origMaxRetries })
+
+	origNodepool := collectNodepoolRowsForCollector
+	collectNodepoolRowsForCollector = func(_ *rest.Config, _ gologr.Logger, windowStart, windowEnd, collectedAt string) ([]nodepoolRow, int, error) {
+		return []nodepoolRow{{
+			HCClusterID:    "hc-a",
+			PoolName:       "pool-a",
+			WindowStart:    windowStart,
+			WindowEnd:      windowEnd,
+			SpecReplicas:   2,
+			StatusReplicas: 2,
+			Autoscaling:    "false",
+			CollectedAt:    collectedAt,
+			Source:         "cluster",
+		}}, 8, nil
+	}
+	t.Cleanup(func() { collectNodepoolRowsForCollector = origNodepool })
+
+	origCRDChecker := kubeVirtCRDChecker
+	kubeVirtCRDChecker = func(*rest.Config) bool { return false }
+	t.Cleanup(func() { kubeVirtCRDChecker = origCRDChecker })
+
+	stubCapacityGathers(t, &hcpK8sFacts{
+		HCs:               []unstructured.Unstructured{capacityHCObj("hc-a", "ns", "HighlyAvailable", false, false, nil)},
+		HCPs:              []unstructured.Unstructured{capacityHCPObj("ns", true)},
+		Nodes:             []unstructured.Unstructured{capacityNodeObj("w", map[string]interface{}{"node-role.kubernetes.io/worker": ""}, nil, "8", "32Gi", "500")},
+		OCPVersion:        "4.22.17",
+		InventoryComplete: true,
+	}, nil, hcpPromFacts{})
+
+	// The capacity hook only emits for the current window (C2), so this test
+	// must use a recent hour rather than the 2020 fakeTimeRange.
+	hourEnd := time.Now().UTC().Truncate(time.Minute)
+	timeRange := promv1.Range{Start: hourEnd.Add(-time.Hour), End: hourEnd, Step: time.Minute}
+	yearMonth := timeRange.Start.Format("200601")
+
+	// SLO and API tax both answer with data, so the cluster-level half of the
+	// scope is pinned by rows on disk rather than by the mock being consulted.
+	mapResults := make(mappedMockPromResult)
+	addNodeAllocCapMockResults(mapResults, t, false)
+	addAPITaxMockResults(mapResults, true)
+	addSLOMockResults(mapResults, true)
+
+	dir := t.TempDir()
+	dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: dir}}
+	cr := noNodeDataTestCR()
+	cr.Status.ClusterID = "hc-a"
+	cr.Status.Topology.ControlPlaneTopology = "External"
+	collector := &PrometheusCollector{
+		PromConn:       mockPrometheusConnection{mappedResults: &mapResults, t: t},
+		TimeSeries:     &timeRange,
+		ContextTimeout: defaultContextTimeout,
+		RestConfig:     &rest.Config{},
+	}
+
+	err := GenerateReports(cr, dirCfg, collector)
+	if !errors.Is(err, ErrNoDataPartial) {
+		t.Fatalf("GenerateReports err = %v, want ErrNoDataPartial: the hour collected no node "+
+			"metrics but the Kubernetes-API inventory does not need them (#811)", err)
+	}
+
+	nodepoolPath := filepath.Join(dir, rosNodepoolFilePrefix+yearMonth+".csv")
+	if rows, readErr := readCSVDataRows(nodepoolPath); readErr != nil || len(rows) == 0 {
+		t.Errorf("NodePool inventory CSV %s has no data rows (err=%v): the no-node-data path "+
+			"must still run the Kubernetes-API inventory (#811)", nodepoolPath, readErr)
+	}
+
+	capacityPath := filepath.Join(dir, rosHCPCapacityFilePrefix+yearMonth+".csv")
+	if rows, readErr := readCSVDataRows(capacityPath); readErr != nil || len(rows) == 0 {
+		t.Errorf("fleet-capacity CSV %s has no data rows (err=%v): the no-node-data path "+
+			"must still run the fleet-capacity snapshot (#811)", capacityPath, readErr)
+	}
+
+	// The cluster-level rollups read metric families other than the node group,
+	// so an empty node group says nothing about them (#811).
+	for _, tc := range []struct{ name, path string }{
+		{"SLO rollup", filepath.Join(dir, rosSLOFilePrefix+yearMonth+".csv")},
+		{"API tax rollup", filepath.Join(dir, rosAPITaxFilePrefix+yearMonth+".csv")},
+	} {
+		if rows, readErr := readCSVDataRows(tc.path); readErr != nil || len(rows) == 0 {
+			t.Errorf("%s CSV %s has no data rows (err=%v): the no-node-data path must still "+
+				"collect the cluster-level rollups (#811)", tc.name, tc.path, readErr)
+		}
+	}
+
+	assertNoROSNodeReportFiles(t, dir)
+}
+
+// #811: the Prometheus half of the same state. SLO and API tax are instant
+// queries on other metric families, and the VM family is collected over
+// 15-minute windows — none of them read the node metric group. The ROS
+// namespace/container reports are deliberately excluded: with empty nodeRows
+// they would emit zeroed node allocatable/capacity fields.
+func TestGenerateReportsNoNodeDataCollectsVMFamily(t *testing.T) {
+	logf.SetLogger(testutils.ZapLogger(true))
+	origMaxRetries := MaxRetries
+	MaxRetries = 1
+	t.Cleanup(func() { MaxRetries = origMaxRetries })
+
+	origNodepool := collectNodepoolRowsForCollector
+	collectNodepoolRowsForCollector = func(_ *rest.Config, _ gologr.Logger, _, _, _ string) ([]nodepoolRow, int, error) {
+		return nil, 0, nil
+	}
+	t.Cleanup(func() { collectNodepoolRowsForCollector = origNodepool })
+
+	origCRDChecker := kubeVirtCRDChecker
+	kubeVirtCRDChecker = func(*rest.Config) bool { return true }
+	t.Cleanup(func() { kubeVirtCRDChecker = origCRDChecker })
+
+	yearMonth := fakeTimeRange.Start.Format("200601")
+	mapResults := buildVMRosMockPromResults(t)
+	addNodeAllocCapMockResults(mapResults, t, false)
+	addAPITaxMockResults(mapResults, false)
+
+	dir := t.TempDir()
+	dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: dir}}
+	timeRange := fakeTimeRange
+	collector := &PrometheusCollector{
+		PromConn:       mockPrometheusConnection{mappedResults: &mapResults, t: t},
+		TimeSeries:     &timeRange,
+		ContextTimeout: defaultContextTimeout,
+		RestConfig:     &rest.Config{},
+	}
+
+	err := GenerateReports(noNodeDataTestCR(), dirCfg, collector)
+	if !errors.Is(err, ErrNoDataPartial) {
+		t.Fatalf("GenerateReports err = %v, want ErrNoDataPartial: the hour collected no node "+
+			"metrics but the VM family does not need them (#811)", err)
+	}
+
+	rosPath := filepath.Join(dir, rosVMFilePrefix+yearMonth+".csv")
+	if rows, readErr := readCSVDataRows(rosPath); readErr != nil || len(rows) == 0 {
+		t.Errorf("ROS VM CSV %s has no data rows (err=%v): the no-node-data path must still "+
+			"collect the VM family (#811)", rosPath, readErr)
+	}
+
+	costPath := filepath.Join(dir, vmFilePrefix+yearMonth+".csv")
+	if rows, readErr := readCSVDataRows(costPath); readErr != nil || len(rows) == 0 {
+		t.Errorf("cost VM CSV %s has no data rows (err=%v): the no-node-data path must still "+
+			"write the cost VM report (#811)", costPath, readErr)
+	}
+
+	assertNoROSNodeReportFiles(t, dir)
+}
+
+// #811: with no node rows, the ROS namespace/container reports would fill the
+// node allocatable/capacity fields with zeroes (collector.go newNodeRow
+// fallback) instead of failing, so they must not run in this state.
+func assertNoROSNodeReportFiles(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read reports dir: %v", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, rosContainerFilePrefix) || strings.HasPrefix(name, rosNamespaceFilePrefix) {
+			t.Errorf("unexpected %s in the no-node-data path: with empty nodeRows the ROS "+
+				"namespace/container reports emit zeroed node allocatable/capacity fields (#811)", name)
+		}
+	}
+}
+
+// noNodeDataTestCR enables both cost and ROS collection, as the operator's
+// defaults do, and leaves ClusterID empty so the SLO rollup self-skips.
+func noNodeDataTestCR() *metricscfgv1beta1.MetricsConfig {
+	falseDef := false
+	cycle := int64(360)
+	cr := &metricscfgv1beta1.MetricsConfig{Spec: metricscfgv1beta1.MetricsConfigSpec{
+		PrometheusConfig: metricscfgv1beta1.PrometheusSpec{
+			DisableMetricsCollectionCostManagement:       &falseDef,
+			DisableMetricsCollectionResourceOptimization: &falseDef,
+		},
+	}}
+	cr.Status.Upload.UploadCycle = &cycle
+	return cr
 }

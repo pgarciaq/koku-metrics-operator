@@ -185,6 +185,16 @@ func collectPromStats(r *MetricsConfigReconciler, cr *metricscfgv1beta1.MetricsC
 			cr.Status.Prometheus.LastQuerySuccessTime = t
 			cr.Status.Reports.DataCollectionMessage = "No data to report for the hour queried."
 			log.Info("no data available to generate reports")
+		} else if errors.Is(err, collector.ErrNoDataPartial) {
+			// #811: the node group was empty, but the deliverables that do not
+			// need it were collected (Kubernetes inventory, cluster-level
+			// rollups, VM family). The hour advances exactly like a no-data
+			// hour — no retry — but data was collected.
+			cr.Status.Prometheus.LastQuerySuccessTime = t
+			cr.Status.Reports.DataCollected = true
+			cr.Status.Reports.DataCollectionMessage = "No node metrics for the hour queried; cluster-level and " +
+				"VM deliverables were collected."
+			log.Info("no node metrics available; node-independent deliverables were collected")
 		} else if errors.Is(err, collector.ErrROSNoEnabledNamespaces) {
 			cr.Status.Prometheus.LastQuerySuccessTime = t
 			cr.Status.Reports.DataCollected = true

@@ -8,6 +8,7 @@ package collector
 import (
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -42,6 +43,12 @@ var (
 
 	ErrNoData                 = errors.New("no data to collect")
 	ErrROSNoEnabledNamespaces = errors.New("no enabled namespaces for ROS")
+	// ErrNoDataPartial means the node metric group was empty, but the
+	// deliverables that do not need it ran and produced rows (#811): the
+	// Kubernetes-API inventory and the cluster-level and VM families. The
+	// hour still advances exactly as with ErrNoData — no retry — but unlike
+	// ErrNoData, data was collected.
+	ErrNoDataPartial = errors.New("no node metrics to collect; node-independent deliverables were collected")
 )
 
 type mappedCSVStruct map[string]csvStruct
@@ -264,6 +271,21 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 	// ################################################################################################################
 	log.Info("querying for node metrics")
 
+	costEnabled := cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement != nil &&
+		!*cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement
+	rosEnabled := cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization != nil &&
+		!*cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization
+	vmEnabled := shouldCollectVMMetrics(c)
+
+	var vmAggregator *vmHourlyAggregator
+	if (costEnabled || rosEnabled) && vmEnabled {
+		vmAggregator = newVMHourlyAggregator(c.TimeSeries)
+	}
+
+	// Hourly window, captured before the quarterly loop below mutates the
+	// shared TimeSeries pointer (#644).
+	sloHourStart, sloHourEnd := c.TimeSeries.Start, c.TimeSeries.End
+
 	// Unified allocatable/capacity queries (2 instead of 6), pivoted by resource label
 	nodeResults, err := c.getNodeAllocCapRangeResults(MaxRetries)
 	if err != nil {
@@ -271,7 +293,30 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 	}
 
 	if len(nodeResults) <= 0 {
-		log.Info("no data to report")
+		// #811: the node group is empty, but every deliverable below that does
+		// not need it would otherwise be dropped for the hour — the Kubernetes
+		// inventory (NodePool, fleet capacity), the cluster-level rollups (SLO,
+		// API tax) and the VM family. Run those, then report whether anything
+		// landed: the hour advances either way, so a genuine no-data hour is
+		// never retried.
+		log.Info("no node metrics to report")
+		before := reportDirSnapshot(dirCfg)
+		if rosEnabled {
+			collectClusterLevelHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd)
+		}
+		if vmEnabled && (costEnabled || rosEnabled) {
+			if vmErr := collectVMQuarterFamily(log, c, dirCfg, yearMonth, vmAggregator); vmErr != nil {
+				return vmErr
+			}
+			if costEnabled {
+				if err := generateCostVMMetricsReportFromAggregator(log, c, dirCfg, yearMonth, vmAggregator); err != nil {
+					return err
+				}
+			}
+		}
+		if reportDirGainedRows(before, dirCfg) {
+			return ErrNoDataPartial
+		}
 		return ErrNoData
 	}
 
@@ -296,21 +341,6 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		}
 	}
 	applyMachineSetNamesToNodeRows(nodeRows, collectNodeMachineSetNamesForCollector(c, log))
-
-	costEnabled := cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement != nil &&
-		!*cr.Spec.PrometheusConfig.DisableMetricsCollectionCostManagement
-	rosEnabled := cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization != nil &&
-		!*cr.Spec.PrometheusConfig.DisableMetricsCollectionResourceOptimization
-	vmEnabled := shouldCollectVMMetrics(c)
-
-	var vmAggregator *vmHourlyAggregator
-	if (costEnabled || rosEnabled) && vmEnabled {
-		vmAggregator = newVMHourlyAggregator(c.TimeSeries)
-	}
-
-	// Hourly SLO window, captured before the quarterly loop below mutates the
-	// shared TimeSeries pointer (#644).
-	sloHourStart, sloHourEnd := c.TimeSeries.Start, c.TimeSeries.End
 
 	// ######## this actually generates the node report and the others for cost-management
 	if costEnabled {
@@ -364,40 +394,11 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		}
 	}
 
-	// SLO API bucket rollups (#644): External-gated hourly snapshot, best-effort.
-	// Independent of namespace opt-in and VM collection; never fails the run.
+	// SLO/API tax rollups, NodePool inventory and the fleet-capacity
+	// snapshot: cluster-level deliverables that do not depend on the node
+	// metric group (#811). All best-effort; never fail the run.
 	if rosEnabled {
-		if err := collectSLOHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
-			log.Info(fmt.Sprintf("SLO rollup collection skipped: %v", err))
-		}
-	}
-
-	// API tax webhook rollups (thin W5, #393): ungated hourly snapshot,
-	// best-effort. Independent of topology, namespace opt-in, and VM
-	// collection; never fails the run.
-	if rosEnabled {
-		if err := collectAPITaxHourly(log, c, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
-			log.Info(fmt.Sprintf("API tax collection skipped: %v", err))
-		}
-	}
-
-	// NodePool inventory snapshots (W3 slice, #660 Child A → #673):
-	// ungated hourly snapshot, best-effort. K8s-API sourced (not Prom);
-	// never fails the run.
-	if rosEnabled {
-		if err := collectNodepoolHourly(log, c.RestConfig, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
-			log.Info(fmt.Sprintf("NodePool inventory collection skipped: %v", err))
-		}
-	}
-
-	// W4 fleet-capacity snapshot (#392, ADR-0334 amendment): hourly,
-	// current window only, K8s-API first (nodes/HC/HCP/pressure) with
-	// Prometheus only for per-HCP QPS rates and the MCE reference gauges.
-	// Best-effort; never fails the run.
-	if rosEnabled {
-		if err := collectHCPCapacityHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd); err != nil {
-			log.Info(fmt.Sprintf("HCP capacity collection skipped: %v", err))
-		}
+		collectClusterLevelHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd)
 	}
 
 	// The no-opted-in-namespace outcome is reported last (#768): it means the
@@ -410,6 +411,129 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 	//################################################################################################################
 
 	return nil
+}
+
+// collectClusterLevelHourly runs the cluster-level deliverables that do not
+// depend on the node metric group: the SLO and API tax rollups (Prometheus),
+// the NodePool inventory and the fleet-capacity snapshot (Kubernetes API).
+// Every one of them is best-effort and self-skips when its family is absent,
+// so this is safe to call from the no-node-data path too (#811).
+//
+// It is a ROS-family group: the caller runs it under the resource-optimization
+// toggle, because every file it can write is routed into the manifest's
+// resource_optimization_files and consumed by the ROS recommendation engine.
+func collectClusterLevelHourly(
+	log gologr.Logger,
+	cr *metricscfgv1beta1.MetricsConfig,
+	c *PrometheusCollector,
+	dirCfg *dirconfig.DirectoryConfig,
+	yearMonth string,
+	hourStart, hourEnd time.Time,
+) {
+	// SLO API bucket rollups (#644): External-gated hourly snapshot, best-effort.
+	// Independent of namespace opt-in and VM collection; never fails the run.
+	if err := collectSLOHourly(log, cr, c, dirCfg, yearMonth, hourStart, hourEnd); err != nil {
+		log.Info(fmt.Sprintf("SLO rollup collection skipped: %v", err))
+	}
+
+	// API tax webhook rollups (thin W5, #393): hourly snapshot, best-effort.
+	// Unlike SLO it needs no External control plane and, unlike the
+	// namespace/container family, no opt-in — but it is still a ROS-family
+	// deliverable (ros-openshift-apitax- is carried in the manifest's ROS file
+	// set and has no Cost Management consumer), so the caller's ROS toggle is
+	// what enables it. Never fails the run.
+	if err := collectAPITaxHourly(log, c, dirCfg, yearMonth, hourStart, hourEnd); err != nil {
+		log.Info(fmt.Sprintf("API tax collection skipped: %v", err))
+	}
+
+	// NodePool inventory snapshots (W3 slice, #660 Child A → #673):
+	// ungated hourly snapshot, best-effort. K8s-API sourced (not Prom);
+	// never fails the run.
+	if err := collectNodepoolHourly(log, c.RestConfig, dirCfg, yearMonth, hourStart, hourEnd); err != nil {
+		log.Info(fmt.Sprintf("NodePool inventory collection skipped: %v", err))
+	}
+
+	// W4 fleet-capacity snapshot (#392, ADR-0334 amendment): hourly,
+	// current window only, K8s-API first (nodes/HC/HCP/pressure) with
+	// Prometheus only for per-HCP QPS rates and the MCE reference gauges.
+	// Best-effort; never fails the run.
+	if err := collectHCPCapacityHourly(log, cr, c, dirCfg, yearMonth, hourStart, hourEnd); err != nil {
+		log.Info(fmt.Sprintf("HCP capacity collection skipped: %v", err))
+	}
+}
+
+// collectVMQuarterFamily runs the VM family over the hour's 15-minute windows:
+// the ROS VM, GPU-device and PVC rows plus the samples the cost VM report
+// aggregates. The ROS namespace/container reports are deliberately not part of
+// this helper — they read nodeRows, and with an empty nodeRows they would emit
+// zeroed node allocatable/capacity fields rather than fail (see
+// generateResourceOptimizationReports).
+func collectVMQuarterFamily(
+	log gologr.Logger,
+	c *PrometheusCollector,
+	dirCfg *dirconfig.DirectoryConfig,
+	yearMonth string,
+	vmAggregator *vmHourlyAggregator,
+) error {
+	quarterCollector := &PrometheusCollector{
+		PromConn:           c.PromConn,
+		PromCfg:            c.PromCfg,
+		ContextTimeout:     c.ContextTimeout,
+		RestConfig:         c.RestConfig,
+		serviceaccountPath: c.serviceaccountPath,
+	}
+	timeRange := c.TimeSeries
+	start := timeRange.Start.Add(1 * time.Second)
+	end := start.Add(14*time.Minute + 59*time.Second)
+	for i := 1; i <= vmQuarterHours; i++ {
+		timeRange.Start = start
+		timeRange.End = end
+		quarterCollector.TimeSeries = timeRange
+		if err := collectVMQuarterHour(log, quarterCollector, dirCfg, yearMonth, vmAggregator); err != nil {
+			return err
+		}
+		start = start.Add(15 * time.Minute)
+		end = end.Add(15 * time.Minute)
+	}
+	return nil
+}
+
+// reportDirSnapshot records the size of every report file so a later
+// comparison can tell whether a deliverable appended rows. The writer appends
+// and skips rows already present, so an unchanged size means nothing new
+// landed (#811).
+func reportDirSnapshot(dirCfg *dirconfig.DirectoryConfig) map[string]int64 {
+	if dirCfg == nil {
+		return nil
+	}
+	entries, err := os.ReadDir(dirCfg.Reports.Path)
+	if err != nil {
+		return nil
+	}
+	sizes := make(map[string]int64, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			continue
+		}
+		sizes[entry.Name()] = info.Size()
+	}
+	return sizes
+}
+
+// reportDirGainedRows reports whether any report grew or appeared since the
+// snapshot, i.e. whether the no-node-data deliverables actually collected data.
+func reportDirGainedRows(before map[string]int64, dirCfg *dirconfig.DirectoryConfig) bool {
+	for name, size := range reportDirSnapshot(dirCfg) {
+		previous, ok := before[name]
+		if !ok || size > previous {
+			return true
+		}
+	}
+	return false
 }
 
 // GenerateSnapshotInventory wraps the snapshot collector for use by the controller.

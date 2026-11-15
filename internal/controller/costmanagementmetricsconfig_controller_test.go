@@ -1403,6 +1403,10 @@ var _ = Describe("MetricsConfigController - CRD Handling", Ordered, func() {
 				Step:  time.Minute,
 			}
 			mockpconn.EXPECT().QueryRange(gomock.Any(), gomock.Any(), timeRange, gomock.Any()).Return(model.Matrix{}, nil, nil).MinTimes(1)
+			// #811: the no-node-data path still runs the cluster-level rollups, which
+			// issue instant queries. They answer empty here, so no deliverable lands and
+			// the hour must stay a plain no-data hour (@see below).
+			mockpconn.EXPECT().Query(gomock.Any(), gomock.Any(), gomock.Any()).Return(model.Vector{}, nil, nil).AnyTimes()
 
 			instCopy.Spec.Upload.UploadToggle = &falseValue
 			createObject(ctx, instCopy)

@@ -905,7 +905,7 @@ func (r *MetricsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				Step:  time.Minute,
 			}
 			if err := collectPromStats(r, cr, dirCfg, timeRange); err != nil {
-				if errors.Is(err, collector.ErrNoData) && t.Hour() == 0 && t.Day() != endTime.Day() && r.initialDataCollection {
+				if shouldSkipDay(err, t, endTime, r.initialDataCollection) {
 					// if there is no data for the first hour of the day, and we are doing the
 					// initial data collection, skip to the next day so we avoid collecting
 					// partial data for a full day. This ensures we are generating a full daily
@@ -979,6 +979,22 @@ func (r *MetricsConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Requeue for processing after 5 minutes
 	return result, concatErrs(errorSlice...)
+}
+
+// shouldSkipDay reports whether an hour produced nothing at all and sits at
+// the start of a day during initial ingest, in which case the rest of that day
+// is skipped so the first report is a complete day rather than a partial one.
+//
+// #811: ErrNoDataPartial is deliberately NOT included. A partial hour did
+// collect node-independent rows (VM family, SLO, API tax, Kubernetes
+// inventory), and showing a partial day beats showing no day at all — the
+// owner decision of 2026-11-15 that overrides the easier symmetric reading.
+// Only an hour that collected nothing continues to abandon the day.
+func shouldSkipDay(err error, hourStart, endTime time.Time, initialDataCollection bool) bool {
+	return errors.Is(err, collector.ErrNoData) &&
+		hourStart.Hour() == 0 &&
+		hourStart.Day() != endTime.Day() &&
+		initialDataCollection
 }
 
 // SetupWithManager Setup reconciliation with manager object
