@@ -527,7 +527,7 @@ func readCapacityCSV(t *testing.T, dirCfg *dirconfig.DirectoryConfig, yearMonth 
 func stubCapacityGathers(t *testing.T, facts *hcpK8sFacts, k8sErr error, prom hcpPromFacts) {
 	t.Helper()
 	origK8s, origProm := gatherHCPCapacityK8s, gatherHCPCapacityProm
-	gatherHCPCapacityK8s = func(*rest.Config) (*hcpK8sFacts, error) { return facts, k8sErr }
+	gatherHCPCapacityK8s = func(context.Context, *rest.Config) (*hcpK8sFacts, error) { return facts, k8sErr }
 	gatherHCPCapacityProm = func(context.Context, hcpCapacityQuerier, time.Time, []string) hcpPromFacts { return prom }
 	t.Cleanup(func() { gatherHCPCapacityK8s, gatherHCPCapacityProm = origK8s, origProm })
 }
@@ -724,7 +724,7 @@ func TestCollectHCPCapacityHourly_StalledPromReturnsWithinBudget(t *testing.T) {
 
 	// Stub ONLY the Kubernetes inventory — the Prometheus path runs real.
 	origK8s := gatherHCPCapacityK8s
-	gatherHCPCapacityK8s = func(*rest.Config) (*hcpK8sFacts, error) {
+	gatherHCPCapacityK8s = func(context.Context, *rest.Config) (*hcpK8sFacts, error) {
 		return &hcpK8sFacts{
 			HCPs:              []unstructured.Unstructured{capacityHCPObj("ns", true)},
 			InventoryComplete: true,
@@ -870,5 +870,191 @@ func TestGatherHCPCapacityProm_ResponsiveServerFactsComplete(t *testing.T) {
 			got = *f.MCERequestMaxHCs
 		}
 		t.Errorf("responsive server: MCE request gauge = %d, want 8", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #809: the Kubernetes inventory gather must honor the configured budget
+// ---------------------------------------------------------------------------
+
+// capacityK8sServer serves the HyperShift group-version document plus the four
+// inventory reads. withholdDiscovery stalls the gate itself; withholdLists
+// lets the gate answer and then withholds every list read.
+func capacityK8sServer(t *testing.T, withholdDiscovery, withholdLists bool) (*httptest.Server, chan struct{}, *atomic.Int32) {
+	t.Helper()
+	release := make(chan struct{})
+	var contacted atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		contacted.Add(1)
+		jsonBody := func(body string) {
+			w.Header().Set("Content-Type", "application/json")
+			if _, err := io.WriteString(w, body); err != nil {
+				t.Errorf("write response: %v", err)
+			}
+		}
+		if r.URL.Path == "/apis/hypershift.openshift.io/v1beta1" {
+			if withholdDiscovery {
+				<-release
+				return
+			}
+			jsonBody(`{"kind":"APIResourceList","apiVersion":"v1","groupVersion":"hypershift.openshift.io/v1beta1","resources":[{"name":"hostedclusters","namespaced":true,"kind":"HostedCluster"}]}`)
+			return
+		}
+		if withholdLists {
+			<-release
+			return
+		}
+		switch r.URL.Path {
+		case "/apis/hypershift.openshift.io/v1beta1/hostedcontrolplanes":
+			jsonBody(`{"kind":"HostedControlPlaneList","apiVersion":"hypershift.openshift.io/v1beta1","items":[]}`)
+		case "/api/v1/nodes":
+			jsonBody(`{"kind":"NodeList","apiVersion":"v1","items":[]}`)
+		case "/apis/config.openshift.io/v1/clusterversions/version":
+			jsonBody(`{"kind":"ClusterVersion","apiVersion":"config.openshift.io/v1","status":{"desired":{"version":"4.22.17"}}}`)
+		default:
+			jsonBody(`{"kind":"HostedClusterList","apiVersion":"hypershift.openshift.io/v1beta1","items":[]}`)
+		}
+	}))
+	return srv, release, &contacted
+}
+
+// runCapacityHook joins the hook goroutine on every exit path, so a stalled
+// server cannot leak a writer into a directory the test is tearing down.
+func runCapacityHook(t *testing.T, c *PrometheusCollector, dirCfg *dirconfig.DirectoryConfig, release chan struct{}, wait time.Duration) (time.Duration, error, bool) {
+	t.Helper()
+	hourEnd := time.Now().UTC().Truncate(time.Minute)
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		done <- collectHCPCapacityHourly(gologr.Discard(), capacityTestCR(), c, dirCfg, "202610", hourEnd.Add(-time.Hour), hourEnd)
+	}()
+
+	var elapsed time.Duration
+	var err error
+	returned := false
+	defer func() {
+		close(release)
+		if returned {
+			return
+		}
+		select {
+		case err := <-done: // the main select already handled it
+			_ = err
+		case <-time.After(5 * time.Second):
+			t.Error("the hook goroutine did not exit after release")
+		}
+	}()
+	select {
+	case err = <-done:
+		returned = true
+		elapsed = time.Since(start)
+	case <-time.After(wait):
+		t.Fatalf("the capacity hook did not return within %v — the stalled Kubernetes response held it past the configured budget (#809)", wait)
+	}
+	return elapsed, err, true
+}
+
+func capacityRowColumn(t *testing.T, rows [][]string, header string) string {
+	t.Helper()
+	if len(rows) < 2 {
+		t.Fatalf("want a data row, got %d rows", len(rows))
+	}
+	for i, h := range rows[0] {
+		if h == header {
+			return rows[1][i]
+		}
+	}
+	t.Fatalf("column %q not found in the capacity CSV", header)
+	return ""
+}
+
+func TestCollectHCPCapacityHourly_StalledK8sInventoryReturnsWithinBudget(t *testing.T) {
+	srv, release, contacted := capacityK8sServer(t, false, true)
+	defer srv.Close()
+
+	c := &PrometheusCollector{
+		RestConfig:     &rest.Config{Host: srv.URL},
+		ContextTimeout: 500 * time.Millisecond,
+	}
+	dirCfg := capacityTempDirCfg(t)
+
+	elapsed, err, returned := runCapacityHook(t, c, dirCfg, release, 6*time.Second)
+	if !returned {
+		return
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("the hook took %v — the stalled inventory held it beyond the configured budget (#809)", elapsed)
+	}
+	if err != nil {
+		t.Errorf("a stalled inventory must degrade the facts, not fail the hook: %v", err)
+	}
+	if contacted.Load() < 2 {
+		t.Error("the stalled server was never contacted — the inventory path did not run")
+	}
+	rows := readCapacityCSV(t, dirCfg, "202610")
+	if got := capacityRowColumn(t, rows, "inventory_complete"); got != "false" {
+		t.Errorf("stalled inventory must leave inventory_complete=false, got %q (#809)", got)
+	}
+	if got := capacityRowColumn(t, rows, "worker_placement_known"); got != "false" {
+		t.Errorf("a failed node list must force worker_placement_known=false, got %q (#809)", got)
+	}
+}
+
+func TestCollectHCPCapacityHourly_StalledK8sGateSkipsTheRow(t *testing.T) {
+	srv, release, _ := capacityK8sServer(t, true, false)
+	defer srv.Close()
+
+	c := &PrometheusCollector{
+		RestConfig:     &rest.Config{Host: srv.URL},
+		ContextTimeout: 500 * time.Millisecond,
+	}
+	dirCfg := capacityTempDirCfg(t)
+
+	elapsed, err, returned := runCapacityHook(t, c, dirCfg, release, 6*time.Second)
+	if !returned {
+		return
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("the hook took %v — a stalled discovery gate must honor the same budget (#809)", elapsed)
+	}
+	if err != nil {
+		t.Errorf("a stalled gate must not fail the hook: %v", err)
+	}
+	// C1: an unreachable gate is indistinguishable from absent HyperShift APIs,
+	// so the capture is skipped rather than emitted as a phantom HCP cluster.
+	if _, statErr := os.Stat(filepath.Join(dirCfg.Reports.Path, rosHCPCapacityFilePrefix+"202610.csv")); !os.IsNotExist(statErr) {
+		t.Errorf("a failed gate must emit no row (C1), stat err = %v", statErr)
+	}
+}
+
+func TestCollectHCPCapacityHourly_ResponsiveK8sInventoryIsComplete(t *testing.T) {
+	srv, release, contacted := capacityK8sServer(t, false, false)
+	defer srv.Close()
+
+	c := &PrometheusCollector{
+		RestConfig:     &rest.Config{Host: srv.URL},
+		ContextTimeout: 5 * time.Second,
+	}
+	dirCfg := capacityTempDirCfg(t)
+
+	elapsed, err, returned := runCapacityHook(t, c, dirCfg, release, 6*time.Second)
+	if !returned {
+		return
+	}
+	if err != nil {
+		t.Fatalf("responsive inventory must not fail the hook: %v", err)
+	}
+	if elapsed > 3*time.Second {
+		t.Errorf("responsive inventory took %v — the budget must not slow the ordinary path", elapsed)
+	}
+	if contacted.Load() != 5 {
+		t.Errorf("contacted %d endpoints, want 5 (gate + 3 lists + ClusterVersion) — the real client path did not run", contacted.Load())
+	}
+	rows := readCapacityCSV(t, dirCfg, "202610")
+	if got := capacityRowColumn(t, rows, "inventory_complete"); got != "true" {
+		t.Errorf("responsive inventory must report inventory_complete=true, got %q (#809)", got)
+	}
+	if got := capacityRowColumn(t, rows, "ocp_version"); got != "4.22.17" {
+		t.Errorf("ocp_version = %q, want 4.22.17 — the bounded ClusterVersion read must still land", got)
 	}
 }

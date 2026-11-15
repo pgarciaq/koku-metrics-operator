@@ -450,15 +450,19 @@ func mceGaugeFromVector(vec model.Vector) (*int64, time.Time, bool) {
 // via the Kubernetes API. nil facts + nil error means the HyperShift APIs
 // are absent (emit nothing); list errors keep the facts with the
 // completeness flags false (emit, marked incomplete).
-var gatherHCPCapacityK8s = func(restConfig *rest.Config) (*hcpK8sFacts, error) {
-	if restConfig == nil || !isHCPCapacityAPIAvailable(restConfig) {
+//
+// #809: ctx carries the caller's budget. Every read here — the discovery
+// gate included — is bounded by it, so a stalled API server degrades the
+// facts instead of wedging the synchronous hook (default reconcile
+// concurrency is 1, and the Prometheus budget starts only afterwards).
+var gatherHCPCapacityK8s = func(ctx context.Context, restConfig *rest.Config) (*hcpK8sFacts, error) {
+	if restConfig == nil || !isHCPCapacityAPIAvailable(ctx, restConfig) {
 		return nil, nil
 	}
 	dyn, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		return nil, fmt.Errorf("dynamic client for HCP capacity: %w", err)
 	}
-	ctx := context.Background()
 	facts := &hcpK8sFacts{InventoryComplete: true}
 
 	hcs, err := listClusterResources(ctx, dyn, hostedClusterGVR)
@@ -497,7 +501,12 @@ var gatherHCPCapacityK8s = func(restConfig *rest.Config) (*hcpK8sFacts, error) {
 
 // isHCPCapacityAPIAvailable discovery-gates the HyperShift read (absent
 // API reads as "not an HCP cluster", never as error).
-func isHCPCapacityAPIAvailable(config *rest.Config) bool {
+//
+// #809: ServerResourcesForGroupVersion has no context variant, so the gate
+// goes through the discovery client's REST client. Same request, same
+// APIResourceList, but it honors ctx — a stalled gate now returns within the
+// caller's budget instead of blocking indefinitely.
+func isHCPCapacityAPIAvailable(ctx context.Context, config *rest.Config) bool {
 	if config == nil {
 		return false
 	}
@@ -505,8 +514,8 @@ func isHCPCapacityAPIAvailable(config *rest.Config) bool {
 	if err != nil {
 		return false
 	}
-	resources, err := discoveryClient.ServerResourcesForGroupVersion("hypershift.openshift.io/v1beta1")
-	if err != nil {
+	resources := &metav1.APIResourceList{}
+	if err := discoveryClient.RESTClient().Get().AbsPath("/apis/hypershift.openshift.io/v1beta1").Do(ctx).Into(resources); err != nil {
 		return false
 	}
 	for _, r := range resources.APIResources {
@@ -649,7 +658,15 @@ func collectHCPCapacityHourly(log gologr.Logger, cr *metricscfgv1beta1.MetricsCo
 	if time.Since(hourEnd) > hcpCapacityCaptureInterval {
 		return nil
 	}
-	facts, err := gatherHCPCapacityK8s(c.RestConfig)
+	// #809: the Kubernetes inventory gets the same configured budget the
+	// evidence gather uses. It runs first and synchronously, so an
+	// unbounded list here wedged the whole hook — packaging, status updates
+	// and requeue included — while the Prometheus budget never started.
+	// The scope is cancelled before the Prom phase so each phase has its
+	// own full budget.
+	inventoryCtx, cancelInventory := context.WithTimeout(context.Background(), c.ContextTimeout)
+	facts, err := gatherHCPCapacityK8s(inventoryCtx, c.RestConfig)
+	cancelInventory()
 	if err != nil {
 		return err
 	}
