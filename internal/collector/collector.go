@@ -296,13 +296,16 @@ func GenerateReports(cr *metricscfgv1beta1.MetricsConfig, dirCfg *dirconfig.Dire
 		// #811: the node group is empty, but every deliverable below that does
 		// not need it would otherwise be dropped for the hour — the Kubernetes
 		// inventory (NodePool, fleet capacity), the cluster-level rollups (SLO,
-		// API tax) and the VM family. Run those, then report whether anything
-		// landed: the hour advances either way, so a genuine no-data hour is
-		// never retried.
+		// API tax, cluster quota) and the VM family. Run those, then report
+		// whether anything landed: the hour advances either way, so a genuine
+		// no-data hour is never retried.
 		log.Info("no node metrics to report")
 		before := reportDirSnapshot(dirCfg)
 		if rosEnabled {
 			collectClusterLevelHourly(log, cr, c, dirCfg, yearMonth, sloHourStart, sloHourEnd)
+			// #865: the cluster-wide quota report is node-independent too —
+			// it reads openshift_clusterresourcequota_usage, not node metrics.
+			collectClusterQuotaHourly(log, c, dirCfg, yearMonth)
 		}
 		if vmEnabled && (costEnabled || rosEnabled) {
 			if vmErr := collectVMQuarterFamily(log, c, dirCfg, yearMonth, vmAggregator); vmErr != nil {
@@ -496,6 +499,44 @@ func collectVMQuarterFamily(
 		end = end.Add(15 * time.Minute)
 	}
 	return nil
+}
+
+// collectClusterQuotaHourly runs the cluster-wide quota report over the same
+// four quarter-hour windows the full path uses, so a partial hour keeps the
+// same sample cadence as a complete one (#865). The call used to exist only
+// inside generateResourceOptimizationReports, which the no-node-data path
+// never reaches, even though the quota family does not depend on node data.
+//
+// Best-effort by design: this runs while salvaging an hour whose node group
+// was empty, and a quota failure must not turn that hour into a failed
+// (retried) one. The full path keeps its fatal semantics.
+func collectClusterQuotaHourly(
+	log gologr.Logger,
+	c *PrometheusCollector,
+	dirCfg *dirconfig.DirectoryConfig,
+	yearMonth string,
+) {
+	quarterCollector := &PrometheusCollector{
+		PromConn:           c.PromConn,
+		PromCfg:            c.PromCfg,
+		ContextTimeout:     c.ContextTimeout,
+		RestConfig:         c.RestConfig,
+		serviceaccountPath: c.serviceaccountPath,
+	}
+	timeRange := c.TimeSeries
+	start := timeRange.Start.Add(1 * time.Second)
+	end := start.Add(14*time.Minute + 59*time.Second)
+	for i := 1; i <= vmQuarterHours; i++ {
+		timeRange.Start = start
+		timeRange.End = end
+		quarterCollector.TimeSeries = timeRange
+		if err := generateROSClusterQuotaReport(log, quarterCollector, dirCfg, yearMonth, end); err != nil {
+			log.Info(fmt.Sprintf("cluster quota collection skipped: %v", err))
+			return
+		}
+		start = start.Add(15 * time.Minute)
+		end = end.Add(15 * time.Minute)
+	}
 }
 
 // reportDirSnapshot records the size of every report file so a later

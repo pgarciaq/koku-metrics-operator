@@ -775,6 +775,9 @@ func TestGenerateReportsNoNodeData(t *testing.T) {
 	// this control test needs: no deliverable can produce a row, so the outcome
 	// must stay a plain ErrNoData (not ErrNoDataPartial) and no file may appear.
 	addAPITaxMockResults(mapResults, false)
+	// #865: the cluster-wide quota report runs on this path too, so its queries
+	// must be answered — with no rows, so the control test keeps its point.
+	addClusterQuotaMockResults(mapResults, t, false)
 
 	copyfakeTimeRange := fakeTimeRange
 	fakeCollector := &PrometheusCollector{
@@ -1617,6 +1620,7 @@ func TestGenerateReportsNoNodeDataCollectsK8sInventory(t *testing.T) {
 	addNodeAllocCapMockResults(mapResults, t, false)
 	addAPITaxMockResults(mapResults, true)
 	addSLOMockResults(mapResults, true)
+	addClusterQuotaMockResults(mapResults, t, false)
 
 	dir := t.TempDir()
 	dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: dir}}
@@ -1688,6 +1692,7 @@ func TestGenerateReportsNoNodeDataCollectsVMFamily(t *testing.T) {
 	mapResults := buildVMRosMockPromResults(t)
 	addNodeAllocCapMockResults(mapResults, t, false)
 	addAPITaxMockResults(mapResults, false)
+	addClusterQuotaMockResults(mapResults, t, false)
 
 	dir := t.TempDir()
 	dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: dir}}
@@ -1715,6 +1720,67 @@ func TestGenerateReportsNoNodeDataCollectsVMFamily(t *testing.T) {
 	if rows, readErr := readCSVDataRows(costPath); readErr != nil || len(rows) == 0 {
 		t.Errorf("cost VM CSV %s has no data rows (err=%v): the no-node-data path must still "+
 			"write the cost VM report (#811)", costPath, readErr)
+	}
+
+	assertNoROSNodeReportFiles(t, dir)
+}
+
+// #865: the cluster-wide quota report is node-independent too, but it used to
+// be reachable only through generateResourceOptimizationReports, which the
+// no-node-data path never runs — so a node-only gap silently dropped it.
+func TestGenerateReportsNoNodeDataCollectsClusterQuota(t *testing.T) {
+	logf.SetLogger(testutils.ZapLogger(true))
+	origMaxRetries := MaxRetries
+	MaxRetries = 1
+	t.Cleanup(func() { MaxRetries = origMaxRetries })
+
+	origNodepool := collectNodepoolRowsForCollector
+	collectNodepoolRowsForCollector = func(_ *rest.Config, _ gologr.Logger, _, _, _ string) ([]nodepoolRow, int, error) {
+		return nil, 0, nil
+	}
+	t.Cleanup(func() { collectNodepoolRowsForCollector = origNodepool })
+
+	origCRDChecker := kubeVirtCRDChecker
+	kubeVirtCRDChecker = func(*rest.Config) bool { return false }
+	t.Cleanup(func() { kubeVirtCRDChecker = origCRDChecker })
+
+	// Nil inventory facts mean the HyperShift APIs are absent (C1), so the
+	// capacity hook writes no file; empty rollups and no NodePools likewise.
+	// The quota report is then the only deliverable that can produce a row,
+	// which is what makes both assertions below specific to #865.
+	stubCapacityGathers(t, nil, nil, hcpPromFacts{})
+
+	hourEnd := time.Now().UTC().Truncate(time.Minute)
+	timeRange := promv1.Range{Start: hourEnd.Add(-time.Hour), End: hourEnd, Step: time.Minute}
+	yearMonth := timeRange.Start.Format("200601")
+
+	mapResults := loadClusterQuotaMockResults(t)
+	addNodeAllocCapMockResults(mapResults, t, false)
+	addAPITaxMockResults(mapResults, false)
+	addSLOMockResults(mapResults, false)
+
+	dir := t.TempDir()
+	dirCfg := &dirconfig.DirectoryConfig{Reports: dirconfig.Directory{Path: dir}}
+	collector := &PrometheusCollector{
+		PromConn:       mockPrometheusConnection{mappedResults: &mapResults, t: t},
+		TimeSeries:     &timeRange,
+		ContextTimeout: defaultContextTimeout,
+		RestConfig:     &rest.Config{},
+	}
+
+	err := GenerateReports(noNodeDataTestCR(), dirCfg, collector)
+	// The file assertion below is the one that names what went missing, so the
+	// sentinel check reports rather than aborts: a removed call must fail with
+	// the quota filename (#865).
+	if !errors.Is(err, ErrNoDataPartial) {
+		t.Errorf("GenerateReports err = %v, want ErrNoDataPartial: the hour produced the "+
+			"cluster-wide quota report, which does not need node metrics (#865)", err)
+	}
+
+	quotaPath := filepath.Join(dir, rosClusterQuotaFilePrefix+yearMonth+".csv")
+	if rows, readErr := readCSVDataRows(quotaPath); readErr != nil || len(rows) == 0 {
+		t.Fatalf("cluster-quota CSV %s has no data rows (err=%v): the no-node-data path must "+
+			"still collect the cluster-wide quota report (#865)", quotaPath, readErr)
 	}
 
 	assertNoROSNodeReportFiles(t, dir)
