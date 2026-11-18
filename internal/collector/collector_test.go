@@ -1537,8 +1537,10 @@ func TestNodePressureQueryShape(t *testing.T) {
 		// (many-to-one, always legal) rather than group_left (many-to-many
 		// across containers sharing a node — the API server rejects it).
 		// Carrier is CPU requests: backend rejects request-less rows, so the
-		// join covers exactly the rows that survive ingest. clamp_min emits
-		// clean 1s (raw request fractions would round to 0 in the backend).
+		// join covers exactly the rows that survive ingest. clamp_min floors
+		// the value at 1 (raw request fractions would round to 0 in the
+		// backend) — the cell is max(cpu_request, 1), NOT always 1; the
+		// backend treats it as > 0 = pressured (librobne PressureOrdinal).
 		if !strings.Contains(q, "and on(node)") {
 			t.Errorf("%s must filter with and on(node), got: %s", key, q)
 		}
@@ -1546,7 +1548,7 @@ func TestNodePressureQueryShape(t *testing.T) {
 			t.Errorf("%s must not group_left container identity, got: %s", key, q)
 		}
 		if !strings.Contains(q, "clamp_min(") {
-			t.Errorf("%s must clamp_min to emit clean 1s, got: %s", key, q)
+			t.Errorf("%s must clamp_min to floor the value at 1, got: %s", key, q)
 		}
 	}
 }
